@@ -48,6 +48,8 @@ extend-exclude = '''
   | buck-out
   | build
   | dist
+  | config
+  | temp
 )/
 '''
 
@@ -61,6 +63,7 @@ use_parentheses = true
 ensure_newline_before_comments = true
 sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 known_first_party = ["tools"]
+extend_skip_glob = ["venv/*", "config/*", "temp/*"]
 
 # Note: flake8 configuration is in .flake8 file (doesn't support pyproject.toml)
 

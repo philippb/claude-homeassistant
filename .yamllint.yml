@@ -9,7 +9,7 @@ rules:
     allowed-values: ['true', 'false', 'on', 'off', 'yes', 'no']
     check-keys: false
 
-  # Disable indentation check for sequences (HA uses different styles)
+  # Home Assistant uses consistent 2-space indentation with standard sequence indentation
   indentation:
     spaces: 2
     indent-sequences: true
@@ -29,6 +29,12 @@ rules:
 
   # Allow multiple documents in one file
   document-end: disable
+
+  # Allow empty files without requiring newlines
+  empty-lines:
+    max: -1
+    max-start: -1
+    max-end: 0
 
   # Brackets can be used in different ways
   brackets:

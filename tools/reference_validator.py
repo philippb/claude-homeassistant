@@ -160,7 +160,6 @@ class ReferenceValidator:
 
     def is_uuid_format(self, value: str) -> bool:
         """Check if a string matches UUID format (32 hex characters)."""
-        import re
         # UUID format: 8-4-4-4-12 hex digits, but HA often stores without hyphens
         uuid_pattern = r"^[a-f0-9]{32}$"
         return bool(re.match(uuid_pattern, value))
@@ -308,7 +307,7 @@ class ReferenceValidator:
 
         if isinstance(data, dict):
             for key, value in data.items():
-                # Look for entity_id fields that contain UUIDs (in device-based automations)
+                # Look for entity_id fields containing UUIDs (device-based automations)
                 if key == "entity_id" and isinstance(value, str):
                     if self.is_uuid_format(value):
                         entity_registry_ids.add(value)
@@ -363,7 +362,7 @@ class ReferenceValidator:
             # Skip UUID-format entity IDs, they're handled separately
             if self.is_uuid_format(entity_id):
                 continue
-                
+
             if entity_id not in entities:
                 # Check if it's a disabled entity
                 disabled_entities = {
@@ -383,7 +382,9 @@ class ReferenceValidator:
         # Validate entity registry ID references (UUID format)
         for registry_id in entity_registry_ids:
             if registry_id not in entity_id_mapping:
-                self.errors.append(f"{file_path}: Unknown entity registry ID '{registry_id}'")
+                self.errors.append(
+                    f"{file_path}: Unknown entity registry ID '{registry_id}'"
+                )
                 all_valid = False
             else:
                 # Check if the mapped entity is disabled
