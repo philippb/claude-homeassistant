@@ -64,8 +64,8 @@ dev-install:
 # Format code
 dev-format:
 	@echo "$(GREEN)Formatting code with black and isort...$(NC)"
-	@$(VENV_ACTIVATE) && black tools/ --line-length 88
-	@$(VENV_ACTIVATE) && isort tools/ --profile black
+	@$(VENV_ACTIVATE) && black . --extend-exclude 'venv/|\.venv/|config/|temp/' --line-length 88
+	@$(VENV_ACTIVATE) && isort . --extend-skip-glob 'venv/*,config/*,temp/*' --profile black
 	@echo "$(GREEN)Code formatting complete!$(NC)"
 
 # Run linters
