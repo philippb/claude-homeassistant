@@ -1,11 +1,5 @@
 # Home Assistant Configuration Management Makefile
 
-# Load environment variables from .env file
-ifneq (,$(wildcard ./.env))
-    include .env
-    export
-endif
-
 # Configuration
 HA_HOST = your_homeassistant_host
 HA_REMOTE_PATH = /config/
@@ -13,6 +7,12 @@ LOCAL_CONFIG_PATH = config/
 BACKUP_DIR = backups
 VENV_PATH = venv
 TOOLS_PATH = tools
+
+# Load environment variables from .env file
+ifneq (,$(wildcard ./.env))
+    include .env
+    export
+endif
 
 # Colors for output
 GREEN = \033[0;32m
