@@ -24,6 +24,10 @@ def include_constructor(loader, node):
     filename = loader.construct_scalar(node)
     return f"!include {filename}"
 
+def include_dir_named_constructor(loader, node):
+    """Handle !include_dir_named tag."""
+    dirname = loader.construct_scalar(node)
+    return f"!include_dir_named {dirname}"
 
 def include_dir_merge_named_constructor(loader, node):
     """Handle !include_dir_merge_named tag."""
@@ -57,6 +61,9 @@ def secret_constructor(loader, node):
 
 # Register custom constructors
 HAYamlLoader.add_constructor("!include", include_constructor)
+HAYamlLoader.add_constructor(
+    "!include_dir_named", include_dir_named_constructor
+)
 HAYamlLoader.add_constructor(
     "!include_dir_merge_named", include_dir_merge_named_constructor
 )
