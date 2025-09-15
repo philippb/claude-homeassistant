@@ -273,11 +273,11 @@ class ReferenceValidator:
                 if key in ["device_id", "device_ids"]:
                     if isinstance(value, str):
                         # Skip blueprint inputs and other HA tags
-                        if not value.startswith("!"):
+                        if not value.startswith("!") and not self.is_template(value):
                             devices.add(value)
                     elif isinstance(value, list):
                         for device in value:
-                            if isinstance(device, str) and not device.startswith("!"):
+                            if isinstance(device, str) and not device.startswith("!") and not self.is_template(device):
                                 devices.add(device)
                 else:
                     devices.update(self.extract_device_references(value))
@@ -297,7 +297,7 @@ class ReferenceValidator:
                 if key in ["area_id", "area_ids"]:
                     if isinstance(value, str):
                         # Skip blueprint inputs and other HA tags
-                        if not value.startswith("!"):
+                        if not value.startswith("!") and not self.is_template(value):
                             areas.add(value)
                     elif isinstance(value, list):
                         for area in value:
