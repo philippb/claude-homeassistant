@@ -96,6 +96,27 @@ echo "Installing Python dependencies..."
 pip install homeassistant voluptuous pyyaml jsonschema requests
 
 echo ""
+echo "🔍 Verifying Python environment..."
+
+# Verify critical dependencies are importable
+VERIFY_FAILED=false
+
+python3 -c "import yaml" 2>/dev/null || { echo "❌ PyYAML not installed correctly"; VERIFY_FAILED=true; }
+python3 -c "import voluptuous" 2>/dev/null || { echo "❌ Voluptuous not installed correctly"; VERIFY_FAILED=true; }
+python3 -c "import jsonschema" 2>/dev/null || { echo "❌ jsonschema not installed correctly"; VERIFY_FAILED=true; }
+python3 -c "import requests" 2>/dev/null || { echo "❌ requests not installed correctly"; VERIFY_FAILED=true; }
+
+if [ "$VERIFY_FAILED" = true ]; then
+    echo ""
+    echo "⚠️  Some dependencies failed to install. Try running:"
+    echo "   source venv/bin/activate"
+    echo "   pip install --force-reinstall homeassistant voluptuous pyyaml jsonschema requests"
+    echo ""
+else
+    echo "✅ All Python dependencies verified"
+fi
+
+echo ""
 echo "🔧 Checking project setup..."
 
 # Check if Makefile exists
@@ -110,29 +131,43 @@ echo "✅ Makefile found"
 if command_exists claude; then
     echo "✅ Claude Code found"
 else
-    echo "⚠️  Claude Code not found - installing..."
-    echo "Downloading Claude Code installer..."
+    echo "⚠️  Claude Code not found"
+    echo ""
+    echo "Installing Claude Code via Homebrew (recommended)..."
 
-    # Download Claude Code for Mac
-    curl -L -o /tmp/claude-code.dmg "https://claude.ai/download/macos"
+    if command_exists brew; then
+        echo "Homebrew found, installing Claude Code..."
+        brew install --cask claude
 
-    if [ $? -eq 0 ]; then
-        echo "Opening Claude Code installer..."
-        open /tmp/claude-code.dmg
-        echo ""
-        echo "📱 Please complete the Claude Code installation:"
-        echo "1. Install Claude Code from the opened disk image"
-        echo "2. Follow the setup wizard"
-        echo "3. Re-run this script after installation: ./setup-mac.sh"
-        echo ""
-        echo "Claude Code will help you manage your Home Assistant configuration easily!"
-        exit 0
+        if [ $? -eq 0 ]; then
+            echo "✅ Claude Code installed successfully!"
+            echo ""
+            echo "Please open Claude from your Applications folder to complete setup,"
+            echo "then re-run this script: ./setup-mac.sh"
+            exit 0
+        else
+            echo "❌ Homebrew installation failed"
+        fi
     else
-        echo "❌ Failed to download Claude Code installer"
-        echo "Please download manually from: https://claude.ai/download"
-        echo "Then re-run this script"
-        exit 1
+        echo "Homebrew not found."
     fi
+
+    echo ""
+    echo "📱 Please install Claude Code manually:"
+    echo ""
+    echo "Option 1 - Homebrew (recommended):"
+    echo "   brew install --cask claude"
+    echo ""
+    echo "Option 2 - Download from website:"
+    echo "   Visit: https://claude.com/solutions/coding"
+    echo "   Download and install the macOS app"
+    echo ""
+    echo "After installation:"
+    echo "1. Open Claude from Applications and complete setup"
+    echo "2. Re-run this script: ./setup-mac.sh"
+    echo ""
+    echo "Note: You need a Claude Pro/Max subscription or API access."
+    exit 0
 fi
 
 echo ""

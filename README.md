@@ -31,7 +31,7 @@ Download the project and run the setup script for your operating system:
 ```
 
 #### **For Windows Users:**
-1. Download or clone this repository ([quick tutorial](https://youtu.be/q9wc7hUrW8U?si=_eT7nL8R8xXec7hL)
+1. Download or clone this repository ([quick tutorial](https://youtu.be/q9wc7hUrW8U?si=_eT7nL8R8xXec7hL))
 2. Open Command Prompt and navigate to the project folder ([how to use terminal on Win](https://youtu.be/8gUvxU7EoNE?si=BCgFIU8ng_ebhWaR))
 3. Run the setup script:
 ```cmd
@@ -47,7 +47,7 @@ setup-windows.bat
 
 ### After Setup
 1. **Configure your Home Assistant connection** (the script will show you how)
-2. **Open Claude Code** ([download here](https://claude.ai/download) if not installed) and navigate to your project folder
+2. **Open Claude Code** ([download here](https://claude.com/solutions/coding) if not installed) and navigate to your project folder
 3. **Pull your configuration** by typing `make pull` in Claude Code
 4. **Start creating automations** with Claude Code!
 
