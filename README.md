@@ -14,7 +14,48 @@ Click to play
 - **⚡ Automated Hooks**: Validation runs automatically on file changes
 - **📊 Entity Registry Integration**: Real-time validation against your actual HA setup
 
-## 🚀 Quick Start
+## 📦 Easy Installation (For Beginners)
+
+**New to command line tools? No problem!** We've made it super easy to get started.
+
+### One-Click Setup Scripts
+
+Download the project and run the setup script for your operating system:
+
+#### **For Mac Users:**
+1. Download or clone this repository ([quick tutorial](https://youtu.be/q9wc7hUrW8U?si=_eT7nL8R8xXec7hL))
+2. Open Terminal and navigate to the project folder ([how to use Terminal on Mac](https://youtu.be/aj9QWELAv9o?si=jx5HexpF60q3ZxO4))
+3. Run the setup script:
+```bash
+./setup-mac.sh
+```
+
+#### **For Windows Users:**
+1. Download or clone this repository ([quick tutorial](https://youtu.be/q9wc7hUrW8U?si=_eT7nL8R8xXec7hL))
+2. Open Command Prompt and navigate to the project folder ([how to use terminal on Win](https://youtu.be/8gUvxU7EoNE?si=BCgFIU8ng_ebhWaR))
+3. Run the setup script:
+```cmd
+setup-windows.bat
+```
+
+### What the Scripts Do
+- ✅ Check that you have all required software (Python, Git, etc.)
+- ✅ Download and install Claude Code automatically if missing
+- ✅ Install any missing dependencies automatically
+- ✅ Set up the Python environment with all needed packages
+- ✅ Guide you through the next steps
+
+### After Setup
+1. **Configure your Home Assistant connection** (the script will show you how)
+2. **Open Claude Code** ([download here](https://claude.com/solutions/coding) if not installed) and navigate to your project folder
+3. **Pull your configuration** by typing `make pull` in Claude Code
+4. **Start creating automations** with Claude Code!
+
+**That's it!** The scripts handle all the technical setup for you. Claude Code makes running commands super easy - just type them directly!
+
+---
+
+## 🚀 Quick Start (Advanced Users)
 
 This repository provides a complete framework for managing Home Assistant configurations with Claude Code. Here's how it works:
 
@@ -57,9 +98,86 @@ VENV_PATH=venv
 TOOLS_PATH=tools
 ```
 
-Set up SSH access to your Home Assistant instance.
+#### 2b. Set Up SSH Access to Home Assistant
 
-**Recommended**: Install the [Advanced SSH & Web Terminal](https://github.com/hassio-addons/addon-ssh) add-on for Home Assistant, which provides excellent SSH/SFTP access needed for the rsync operations in this project.
+**Required**: Install the [Advanced SSH & Web Terminal](https://github.com/hassio-addons/addon-ssh) add-on for Home Assistant, which provides SSH/SFTP access needed for the rsync operations in this project.
+
+<details>
+<summary><strong>Click to expand SSH setup instructions</strong></summary>
+
+##### Generate SSH Key Pair (if you don't have one)
+
+```bash
+# Generate a new SSH key pair for Home Assistant
+ssh-keygen -t ed25519 -f ~/.ssh/homeassistant -C "your-email@example.com"
+
+# Verify the key files were created
+ls -l ~/.ssh/homeassistant*
+```
+
+This creates:
+- `~/.ssh/homeassistant` (private key - keep this secure)
+- `~/.ssh/homeassistant.pub` (public key - this goes into HA)
+
+##### Configure Advanced SSH & Web Terminal Add-on
+
+1. Install the **Advanced SSH & Web Terminal** add-on in Home Assistant
+2. Configure the add-on with this YAML configuration:
+
+```yaml
+username: root
+password: ""
+authorized_keys:
+  - >-
+    ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... your-email@example.com
+sftp: true
+compatibility_mode: false
+allow_agent_forwarding: false
+allow_remote_port_forwarding: false
+allow_tcp_forwarding: false
+```
+
+**Important**: Replace the `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...` line with the contents of your `~/.ssh/homeassistant.pub` file.
+
+3. Start the add-on and ensure it's running
+
+##### Configure SSH Client on Your Computer
+
+Create or edit your SSH config file (`~/.ssh/config`):
+
+```
+# Home Assistant SSH Configuration
+Host homeassistant
+  HostName homeassistant.local  # or your HA IP address
+  User root
+  IdentityFile ~/.ssh/homeassistant
+  StrictHostKeyChecking no
+```
+
+**Note**: Replace `homeassistant.local` with your Home Assistant's IP address if hostname resolution doesn't work.
+
+##### Test SSH Connection
+
+```bash
+# Test the SSH connection
+ssh homeassistant
+
+# You should see:
+# Welcome to the Home Assistant command line.
+```
+
+If successful, you can exit with `exit` or `Ctrl+D`.
+
+</details>
+
+#### 2c. Get Your Home Assistant Token
+
+To get your `HA_TOKEN`:
+1. Go to Home Assistant → Settings → People → Your Profile
+2. Scroll to "Long-lived access tokens"
+3. Click "Create Token"
+4. Give it a name like "Claude Home Assistant"
+5. Copy the token and paste it as `HA_TOKEN` value in your `.env` file
 
 #### 3. Pull Your Real Configuration
 ```bash
@@ -257,9 +375,70 @@ The entity explorer helps you understand what's available:
 3. Check HA logs if official validation fails
 
 ### SSH Connection Issues
-1. Test connection: `ssh your_homeassistant_host`
-2. Check SSH key permissions: `chmod 600 ~/.ssh/your_key`
-3. Verify SSH config in `~/.ssh/config`
+
+<details>
+<summary><strong>Click to expand SSH troubleshooting</strong></summary>
+
+#### Common SSH Problems and Solutions
+
+1. **Connection refused or timeout**:
+   ```bash
+   # Test if the SSH add-on is running
+   ssh homeassistant
+   # If this fails, check if the Advanced SSH & Web Terminal add-on is started in HA
+   ```
+
+2. **Permission denied (publickey)**:
+   ```bash
+   # Check SSH key permissions
+   chmod 600 ~/.ssh/homeassistant
+   chmod 644 ~/.ssh/homeassistant.pub
+
+   # Verify your public key is correctly added to the HA SSH add-on config
+   cat ~/.ssh/homeassistant.pub
+   ```
+
+3. **Host key verification failed**:
+   ```bash
+   # Remove old host key and try again
+   ssh-keygen -R homeassistant.local
+   # Or if using IP address:
+   ssh-keygen -R 192.168.1.100
+   ```
+
+4. **SSH config issues**:
+   ```bash
+   # Test connection with verbose output
+   ssh -v homeassistant
+
+   # Check your SSH config
+   cat ~/.ssh/config
+   ```
+
+5. **Advanced SSH & Web Terminal not responding**:
+   - Restart the add-on in Home Assistant
+   - Check Home Assistant logs for SSH add-on errors
+   - Verify the add-on configuration YAML is valid
+
+#### Verifying Your Setup
+
+Run these commands to verify everything is configured correctly:
+
+```bash
+# 1. Check SSH key files exist and have correct permissions
+ls -la ~/.ssh/homeassistant*
+
+# 2. Check SSH config
+grep -A 5 "Host homeassistant" ~/.ssh/config
+
+# 3. Test SSH connection
+ssh homeassistant "ls /config"
+
+# 4. Test rsync (what make pull/push uses)
+rsync -avz --dry-run homeassistant:/config/ ./test/
+```
+
+</details>
 
 ### Missing Dependencies
 ```bash
