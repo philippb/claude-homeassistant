@@ -72,9 +72,7 @@ def secret_constructor(loader, node):
 
 # Register custom constructors
 HAYamlLoader.add_constructor("!include", include_constructor)
-HAYamlLoader.add_constructor(
-    "!include_dir_named", include_dir_named_constructor
-)
+HAYamlLoader.add_constructor("!include_dir_named", include_dir_named_constructor)
 HAYamlLoader.add_constructor(
     "!include_dir_merge_named", include_dir_merge_named_constructor
 )
@@ -276,7 +274,11 @@ class ReferenceValidator:
                             devices.add(value)
                     elif isinstance(value, list):
                         for device in value:
-                            if isinstance(device, str) and not device.startswith("!") and not self.is_template(device):
+                            if (
+                                isinstance(device, str)
+                                and not device.startswith("!")
+                                and not self.is_template(device)
+                            ):
                                 devices.add(device)
                 else:
                     devices.update(self.extract_device_references(value))
