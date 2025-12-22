@@ -53,7 +53,22 @@ push: check-env
 	@echo "$(GREEN)Validating configuration before push...$(NC)"
 	@$(MAKE) validate
 	@echo "$(GREEN)Validation passed! Pushing to Home Assistant...$(NC)"
-	@rsync -avz --delete --exclude-from=.rsync-excludes $(LOCAL_CONFIG_PATH) $(HA_HOST):$(HA_REMOTE_PATH)
+	@# Note: --filter='protect ...' ensures these directories are NEVER deleted on the server,
+	@# even if they don't exist locally (because they were excluded from pull)
+	@rsync -avz --delete \
+		--exclude-from=.rsync-excludes \
+		--filter='protect .storage/' \
+		--filter='protect backups/' \
+		--filter='protect www/' \
+		--filter='protect image/' \
+		--filter='protect tmp_backups/' \
+		--filter='protect custom_components/' \
+		--filter='protect custom_icons/' \
+		--filter='protect themes/' \
+		--filter='protect deps/' \
+		--filter='protect tts/' \
+		--filter='protect .cloud/' \
+		$(LOCAL_CONFIG_PATH) $(HA_HOST):$(HA_REMOTE_PATH)
 	@echo "$(GREEN)Configuration pushed successfully!$(NC)"
 	@echo "$(GREEN)Reloading Home Assistant configuration...$(NC)"
 	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reload_config.py
