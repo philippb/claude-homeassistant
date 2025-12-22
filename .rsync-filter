@@ -1,0 +1,40 @@
+# Rsync filter rules for Home Assistant config sync
+#
+# Filter modifiers:
+#   H = Hide (exclude from transfer AND protect from --delete)
+#   - = Exclude (exclude from transfer only)
+#
+# Use 'H' for directories/files that exist on the server but not locally
+# Use '-' for generated files that shouldn't be synced either direction
+
+# Database and log files (generated, just exclude)
+- home-assistant_v2.db*
+- *.log*
+- *.db-shm
+- *.db-wal
+
+# Security: Exclude and protect auth tokens (fixes #24)
+H .storage/auth
+H .storage/auth_cache
+
+# Protect entire .storage from accidental deletion (contains entity registry, etc.)
+H .storage/
+
+# Custom add-ons and themes (user-managed separately)
+H custom_components/
+H custom_icons/
+H themes/
+
+# Runtime and cache directories
+H .cloud/
+H deps/
+H tts/
+
+# Large directories not needed for config management (fixes #20)
+H backups/
+H image/
+H tmp_backups/
+H www/
+
+# Miscellaneous
+- .uuid

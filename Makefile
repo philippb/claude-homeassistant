@@ -43,7 +43,7 @@ help:
 # Pull configuration from Home Assistant
 pull: check-env
 	@echo "$(GREEN)Pulling configuration from Home Assistant...$(NC)"
-	@rsync -avz --delete --exclude-from=.rsync-excludes $(HA_HOST):$(HA_REMOTE_PATH) $(LOCAL_CONFIG_PATH)
+	@rsync -avz --delete --filter='. .rsync-filter' $(HA_HOST):$(HA_REMOTE_PATH) $(LOCAL_CONFIG_PATH)
 	@echo "$(GREEN)Configuration pulled successfully!$(NC)"
 	@echo "$(YELLOW)Running validation to ensure integrity...$(NC)"
 	@$(MAKE) validate
@@ -53,22 +53,8 @@ push: check-env
 	@echo "$(GREEN)Validating configuration before push...$(NC)"
 	@$(MAKE) validate
 	@echo "$(GREEN)Validation passed! Pushing to Home Assistant...$(NC)"
-	@# Note: --filter='protect ...' ensures these directories are NEVER deleted on the server,
-	@# even if they don't exist locally (because they were excluded from pull)
-	@rsync -avz --delete \
-		--exclude-from=.rsync-excludes \
-		--filter='protect .storage/' \
-		--filter='protect backups/' \
-		--filter='protect www/' \
-		--filter='protect image/' \
-		--filter='protect tmp_backups/' \
-		--filter='protect custom_components/' \
-		--filter='protect custom_icons/' \
-		--filter='protect themes/' \
-		--filter='protect deps/' \
-		--filter='protect tts/' \
-		--filter='protect .cloud/' \
-		$(LOCAL_CONFIG_PATH) $(HA_HOST):$(HA_REMOTE_PATH)
+	@# Filter file uses 'H' (hide) rules which both exclude AND protect from --delete
+	@rsync -avz --delete --filter='. .rsync-filter' $(LOCAL_CONFIG_PATH) $(HA_HOST):$(HA_REMOTE_PATH)
 	@echo "$(GREEN)Configuration pushed successfully!$(NC)"
 	@echo "$(GREEN)Reloading Home Assistant configuration...$(NC)"
 	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reload_config.py
