@@ -1,11 +1,28 @@
+# Database and log files
 home-assistant_v2.db*
 *.log*
+*.db-shm
+*.db-wal
+
+# Security: Exclude auth tokens (fixes #24)
+.storage/auth
+.storage/auth_cache
+
+# Custom add-ons and themes (user-managed separately)
 custom_components/
 custom_icons/
 themes/
+
+# Runtime and cache directories
 .cloud/
 deps/
 tts/
-*.db-shm
-*.db-wal
+
+# Large directories not needed for config management (fixes #20)
+backups/
+image/
+tmp_backups/
+www/
+
+# Miscellaneous
 .uuid
