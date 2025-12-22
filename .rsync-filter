@@ -1,40 +1,82 @@
 # Rsync filter rules for Home Assistant config sync
 #
 # Filter modifiers:
-#   H = Hide (exclude from transfer AND protect from --delete)
-#   - = Exclude (exclude from transfer only)
+#   P = Protect from --delete (keeps files on receiver even if not on sender)
+#   - = Exclude from transfer (don't send these files)
 #
-# Use 'H' for directories/files that exist on the server but not locally
-# Use '-' for generated files that shouldn't be synced either direction
+# For directories that exist on the server but not locally, we need BOTH:
+#   P dir/**  (protect all contents recursively)
+#   P dir/    (protect the directory itself)
 
-# Database and log files (generated, just exclude)
+# Database and log files (generated, just exclude from transfer)
 - home-assistant_v2.db*
 - *.log*
 - *.db-shm
 - *.db-wal
 
-# Security: Exclude and protect auth tokens (fixes #24)
-H .storage/auth
-H .storage/auth_cache
+# Security: Exclude AND protect auth tokens (fixes #24)
+# - = exclude from transfer (don't send even if exists locally)
+# P = protect from deletion (don't delete on remote)
+- .storage/auth/**
+- .storage/auth/
+P .storage/auth/**
+P .storage/auth/
+- .storage/auth_cache/**
+- .storage/auth_cache/
+P .storage/auth_cache/**
+P .storage/auth_cache/
 
-# Protect entire .storage from accidental deletion (contains entity registry, etc.)
-H .storage/
+# Protect entire .storage from accidental deletion
+# (contains entity registry, device registry, etc.)
+P .storage/**
+P .storage/
 
 # Custom add-ons and themes (user-managed separately)
-H custom_components/
-H custom_icons/
-H themes/
+# Exclude from transfer, protect from deletion
+- custom_components/**
+- custom_components/
+P custom_components/**
+P custom_components/
+- custom_icons/**
+- custom_icons/
+P custom_icons/**
+P custom_icons/
+- themes/**
+- themes/
+P themes/**
+P themes/
 
 # Runtime and cache directories
-H .cloud/
-H deps/
-H tts/
+- .cloud/**
+- .cloud/
+P .cloud/**
+P .cloud/
+- deps/**
+- deps/
+P deps/**
+P deps/
+- tts/**
+- tts/
+P tts/**
+P tts/
 
 # Large directories not needed for config management (fixes #20)
-H backups/
-H image/
-H tmp_backups/
-H www/
+- backups/**
+- backups/
+P backups/**
+P backups/
+- image/**
+- image/
+P image/**
+P image/
+- tmp_backups/**
+- tmp_backups/
+P tmp_backups/**
+P tmp_backups/
+- www/**
+- www/
+P www/**
+P www/
 
-# Miscellaneous
+# Miscellaneous (exclude only, can be regenerated)
 - .uuid
