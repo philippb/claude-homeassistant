@@ -5,7 +5,7 @@
 include Makefile
 
 # Development-specific variables
-PYTHON = python3.11
+PYTHON = python3.12
 PIP = pip
 VENV_ACTIVATE = source venv/bin/activate
 TEST_DIR = tests

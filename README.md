@@ -369,6 +369,16 @@ The entity explorer helps you understand what's available:
 
 ## 🐛 Troubleshooting
 
+### Build Error: lru-dict or Other C Extensions (macOS)
+If you see errors like `Building wheel for lru-dict... error` during `make setup`, you likely have an old Python version from Xcode Command Line Tools.
+
+**Solution**: Install Python 3.12+ via Homebrew:
+```bash
+brew install python@3.12
+export PATH="/opt/homebrew/bin:$PATH"
+```
+Then run `make setup` again. Home Assistant 2024.x requires Python 3.12+.
+
 ### Validation Errors
 1. Check YAML syntax first: `. venv/bin/activate && python tools/yaml_validator.py`
 2. Verify entity references: `. venv/bin/activate && python tools/reference_validator.py`

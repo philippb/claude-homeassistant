@@ -22,21 +22,34 @@ command_exists() {
 
 echo "🔍 Checking prerequisites..."
 
-# Check if Python 3.8+ is available
+# Check if Python 3.12+ is available (required by Home Assistant 2024.x)
 if ! command_exists python3; then
     echo "❌ Python 3 is not installed."
-    echo "Please install Python from https://www.python.org/downloads/"
-    echo "Or use Homebrew: brew install python3"
+    echo ""
+    echo "Install Python 3.12+ via Homebrew (recommended):"
+    echo "   brew install python@3.12"
+    echo ""
+    echo "Then run this script again."
     exit 1
 fi
 
-# Check Python version
+# Check Python version - Home Assistant 2024.x requires Python 3.12+
 PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-REQUIRED_VERSION="3.8"
 
-if ! python3 -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)"; then
-    echo "❌ Python $PYTHON_VERSION found, but Python 3.8+ is required."
-    echo "Please upgrade Python from https://www.python.org/downloads/"
+if ! python3 -c "import sys; exit(0 if sys.version_info >= (3, 12) else 1)"; then
+    echo "❌ Python $PYTHON_VERSION found, but Python 3.12+ is required."
+    echo ""
+    echo "Home Assistant 2024.x requires Python 3.12 or newer."
+    echo "The system Python from Xcode Command Line Tools is typically too old"
+    echo "and may cause build errors with C extensions."
+    echo ""
+    echo "Install Python 3.12+ via Homebrew:"
+    echo "   brew install python@3.12"
+    echo ""
+    echo "After installation, ensure Homebrew Python is in your PATH:"
+    echo "   export PATH=\"/opt/homebrew/bin:\$PATH\""
+    echo ""
+    echo "Then run this script again."
     exit 1
 fi
 

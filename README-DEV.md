@@ -96,7 +96,7 @@ make -f Makefile.dev dev-clean-dev
 
 ### Black (Code Formatting)
 - Line length: 88 characters
-- Target Python version: 3.11+
+- Target Python version: 3.12+
 - Automatically formats all Python files
 
 ### isort (Import Sorting)

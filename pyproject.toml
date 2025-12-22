@@ -9,7 +9,7 @@ description = "Home Assistant configuration management and validation tools"
 authors = [
     {name = "Home Assistant Config Management"}
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "homeassistant>=2024.1.0",
     "voluptuous>=0.14.0",
@@ -32,7 +32,7 @@ dev = [
 
 [tool.black]
 line-length = 88
-target-version = ['py311']
+target-version = ['py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -68,7 +68,7 @@ extend_skip_glob = ["venv/*", "config/*", "temp/*"]
 # Note: flake8 configuration is in .flake8 file (doesn't support pyproject.toml)
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_unused_configs = true
 # Relaxed settings for existing codebase
 disallow_untyped_defs = false
