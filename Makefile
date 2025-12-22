@@ -200,3 +200,8 @@ test-ssh:
 	@ssh -o ConnectTimeout=10 $(HA_HOST) "echo 'Connection successful'" && \
 		echo "$(GREEN)✓ SSH connection working$(NC)" || \
 		echo "$(RED)✗ SSH connection failed$(NC)"
+
+# Rsync filter integration tests
+test-rsync:
+	@echo "$(GREEN)Running rsync filter integration tests...$(NC)"
+	@python3 $(TOOLS_PATH)/test_rsync_filter.py
