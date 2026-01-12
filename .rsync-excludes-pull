@@ -1,0 +1,21 @@
+# ===========================================
+# RSYNC EXCLUDES FOR: make pull (HA → Local)
+# Less restrictive - pull most files for backup
+# ===========================================
+
+# Database files (too large, not needed locally)
+home-assistant_v2.db*
+*.db-shm
+*.db-wal
+
+# Log files - INCLUDED for debugging/review
+# *.log*
+
+# Cache directories (regenerated automatically)
+deps/
+tts/
+__pycache__/
+
+# Temporary files
+*.tmp
+*.temp
