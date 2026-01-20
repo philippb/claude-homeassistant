@@ -266,7 +266,7 @@ task entities ARGS='--full'             # Complete detailed output
 ```bash
 uv run python tools/yaml_validator.py         # YAML syntax only
 uv run python tools/reference_validator.py    # Entity references only
-python tools/ha_official_validator.py         # Official HA validation
+uv run python tools/ha_official_validator.py         # Official HA validation
 ```
 
 ## 🔧 Validation System

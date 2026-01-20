@@ -33,7 +33,7 @@ tasks:
   pre-commit:
     desc: Run pre-commit on all files
     aliases: [pre-commit-all]
-    deps: [pre-commit]
+    deps: [pre-commit-install]
     cmds:
       - prek run -a
 
