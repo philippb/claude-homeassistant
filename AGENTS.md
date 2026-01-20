@@ -22,10 +22,10 @@ This project manages Home Assistant configuration files with automated validatio
 - `task validate` - Run all validation tests
 
 ### Validation Tools
-- `python tools/run_tests.py` - Run complete validation suite
-- `python tools/yaml_validator.py` - YAML syntax validation only
-- `python tools/reference_validator.py` - Entity/device reference validation
-- `python tools/ha_official_validator.py` - Official HA configuration validation
+- `uv run python tools/run_tests.py` - Run complete validation suite
+- `uv run python tools/yaml_validator.py` - YAML syntax validation only
+- `uv run python tools/reference_validator.py` - Entity/device reference validation
+- `uv run python tools/ha_official_validator.py` - Official HA configuration validation
 
 ### Entity Discovery Tools
 - `task entities` - Explore available Home Assistant entities
