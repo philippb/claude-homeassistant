@@ -75,6 +75,8 @@ exclude = [
     "build/",
     "dist/",
 ]
+explicit_package_bases = false
+no_namespace_packages = true
 
 [[tool.mypy.overrides]]
 module = [

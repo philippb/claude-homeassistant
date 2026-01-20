@@ -14,9 +14,9 @@ from typing import List
 class HAOfficialValidator:
     """Validates Home Assistant configuration using the official HA package."""
 
-    def __init__(self, config_dir: str = "config"):
+    def __init__(self, config_dir: Path = Path("config")):
         """Initialize the HAOfficialValidator."""
-        self.config_dir = Path(config_dir).resolve()
+        self.config_dir = config_dir.resolve()
         self.errors: List[str] = []
         self.warnings: List[str] = []
         self.info: List[str] = []
@@ -167,7 +167,7 @@ def main():
     """Run Home Assistant configuration validation from command line."""
     config_dir = sys.argv[1] if len(sys.argv) > 1 else "config"
 
-    validator = HAOfficialValidator(config_dir)
+    validator = HAOfficialValidator(Path(config_dir))
     is_valid = validator.validate_all()
     validator.print_results()
 

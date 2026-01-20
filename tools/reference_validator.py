@@ -90,9 +90,9 @@ class ReferenceValidator:
     # Special keywords that are not entity IDs
     SPECIAL_KEYWORDS = {"all", "none"}
 
-    def __init__(self, config_dir: str = "config"):
+    def __init__(self, config_dir: Path = Path("config")):
         """Initialize the ReferenceValidator."""
-        self.config_dir = Path(config_dir)
+        self.config_dir = config_dir.resolve()
         self.storage_dir = self.config_dir / ".storage"
         self.errors: List[str] = []
         self.warnings: List[str] = []

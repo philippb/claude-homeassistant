@@ -73,9 +73,9 @@ HAYamlLoader.add_constructor("!secret", secret_constructor)
 class YAMLValidator:
     """Validates YAML syntax and basic structure for Home Assistant files."""
 
-    def __init__(self, config_dir: str = "config"):
+    def __init__(self, config_dir: Path = Path("config")):
         """Initialize the YAMLValidator."""
-        self.config_dir = Path(config_dir)
+        self.config_dir = config_dir.resolve()
         self.errors: List[str] = []
         self.warnings: List[str] = []
 
