@@ -1,12 +1,13 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
-        args: ['--unsafe']  # Allow Home Assistant specific YAML tags
+        args: ["--unsafe"] # Allow Home Assistant specific YAML tags
       - id: check-added-large-files
+        exclude: uv.lock
       - id: check-case-conflict
       - id: check-merge-conflict
       - id: check-executables-have-shebangs
@@ -14,38 +15,21 @@ repos:
       - id: check-toml
       - id: check-json
       - id: mixed-line-ending
-        args: ['--fix=lf']
+        args: ["--fix=lf"]
 
-  - repo: https://github.com/psf/black
-    rev: 24.1.1
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.13
     hooks:
-      - id: black
-
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        args: ["--profile", "black"]
-
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.0.0
-    hooks:
-      - id: flake8
-        additional_dependencies: [flake8-docstrings, flake8-bugbear]
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
+    rev: v1.19.1
     hooks:
       - id: mypy
         additional_dependencies: [types-PyYAML, types-requests]
         exclude: ^(tests/|.*_test\.py$)
-
-  - repo: https://github.com/pycqa/pylint
-    rev: v3.0.3
-    hooks:
-      - id: pylint
-        args: ["--rcfile=pyproject.toml"]
-        additional_dependencies: [homeassistant, voluptuous, pyyaml]
 
   - repo: local
     hooks:
@@ -56,7 +40,7 @@ repos:
         files: \.(yaml|yml)$
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.2.6
+    rev: v2.4.1
     hooks:
       - id: codespell
         additional_dependencies: [tomli]

@@ -22,26 +22,6 @@ command_exists() {
 
 echo "🔍 Checking prerequisites..."
 
-# Check if Python 3.8+ is available
-if ! command_exists python3; then
-    echo "❌ Python 3 is not installed."
-    echo "Please install Python from https://www.python.org/downloads/"
-    echo "Or use Homebrew: brew install python3"
-    exit 1
-fi
-
-# Check Python version
-PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-REQUIRED_VERSION="3.8"
-
-if ! python3 -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)"; then
-    echo "❌ Python $PYTHON_VERSION found, but Python 3.8+ is required."
-    echo "Please upgrade Python from https://www.python.org/downloads/"
-    exit 1
-fi
-
-echo "✅ Python $PYTHON_VERSION found"
-
 # Check if git is available
 if ! command_exists git; then
     echo "❌ Git is not installed."
@@ -53,16 +33,17 @@ fi
 
 echo "✅ Git found"
 
-# Check if make is available
-if ! command_exists make; then
-    echo "❌ Make is not installed."
-    echo "Installing Command Line Tools (includes make)..."
-    xcode-select --install
+# Check if task is available
+if ! command_exists task; then
+    echo "Task is not installed."
+    echo "Installing task..."
+    # TODO: Check if Homebrew is installed first
+    brew install go-task/tap/go-task
     echo "Please run this script again after installation completes."
     exit 1
 fi
 
-echo "✅ Make found"
+echo "✅ Task found"
 
 # Check if ssh is available
 if ! command_exists ssh; then
@@ -75,25 +56,8 @@ echo "✅ SSH found"
 echo ""
 echo "🐍 Setting up Python environment..."
 
-# Create virtual environment
-if [ ! -d "venv" ]; then
-    echo "Creating Python virtual environment..."
-    python3 -m venv venv
-else
-    echo "Virtual environment already exists"
-fi
-
-# Activate virtual environment
-echo "Activating virtual environment..."
-source venv/bin/activate
-
-# Upgrade pip
-echo "Upgrading pip..."
-pip install --upgrade pip
-
-# Install dependencies
-echo "Installing Python dependencies..."
-pip install homeassistant voluptuous pyyaml jsonschema requests
+task dev:uv
+uv sync
 
 echo ""
 echo "🔍 Verifying Python environment..."
@@ -101,16 +65,15 @@ echo "🔍 Verifying Python environment..."
 # Verify critical dependencies are importable
 VERIFY_FAILED=false
 
-python3 -c "import yaml" 2>/dev/null || { echo "❌ PyYAML not installed correctly"; VERIFY_FAILED=true; }
-python3 -c "import voluptuous" 2>/dev/null || { echo "❌ Voluptuous not installed correctly"; VERIFY_FAILED=true; }
-python3 -c "import jsonschema" 2>/dev/null || { echo "❌ jsonschema not installed correctly"; VERIFY_FAILED=true; }
-python3 -c "import requests" 2>/dev/null || { echo "❌ requests not installed correctly"; VERIFY_FAILED=true; }
+uv run python -c "import yaml" 2>/dev/null || { echo "❌ PyYAML not installed correctly"; VERIFY_FAILED=true; }
+uv run python -c "import voluptuous" 2>/dev/null || { echo "❌ Voluptuous not installed correctly"; VERIFY_FAILED=true; }
+uv run python -c "import jsonschema" 2>/dev/null || { echo "❌ jsonschema not installed correctly"; VERIFY_FAILED=true; }
+uv run python -c "import requests" 2>/dev/null || { echo "❌ requests not installed correctly"; VERIFY_FAILED=true; }
 
 if [ "$VERIFY_FAILED" = true ]; then
     echo ""
     echo "⚠️  Some dependencies failed to install. Try running:"
-    echo "   source venv/bin/activate"
-    echo "   pip install --force-reinstall homeassistant voluptuous pyyaml jsonschema requests"
+    echo "   uv sync"
     echo ""
 else
     echo "✅ All Python dependencies verified"
@@ -118,14 +81,6 @@ fi
 
 echo ""
 echo "🔧 Checking project setup..."
-
-# Check if Makefile exists
-if [ ! -f "Makefile" ]; then
-    echo "❌ Makefile not found. Are you in the correct directory?"
-    exit 1
-fi
-
-echo "✅ Makefile found"
 
 # Check if Claude Code is available
 if command_exists claude; then
@@ -197,6 +152,8 @@ else
     fi
 fi
 
+# TODO: save HA_HOST to .env (copy .env.example first)
+
 echo ""
 echo "🔑 SSH Configuration"
 echo "==================="
@@ -261,20 +218,6 @@ case $ssh_option in
         ;;
 esac
 
-# Update Makefile with the provided host
-echo ""
-echo "📝 Updating Makefile configuration..."
-if [ -f "Makefile" ]; then
-    # Create backup
-    cp Makefile Makefile.backup
-
-    # Update HA_HOST in Makefile
-    sed -i.bak "s/^HA_HOST = .*/HA_HOST = $HA_HOST/" Makefile && rm Makefile.bak
-    echo "✅ Makefile updated with HA_HOST = $HA_HOST"
-else
-    echo "❌ Makefile not found - you may need to configure manually"
-fi
-
 echo ""
 echo "🎉 Setup Complete!"
 echo "=================="
@@ -290,12 +233,12 @@ echo ""
 echo "Next steps:"
 if [ "$SSH_CONFIGURED" = true ]; then
     echo "1. Pull your actual configuration:"
-    echo "   make pull"
+    echo "   task pull"
     echo ""
     echo "2. Start creating automations with Claude Code!"
 else
     echo "1. Complete SSH setup (see instructions above)"
-    echo "2. Pull your actual configuration: make pull"
+    echo "2. Pull your actual configuration: task pull"
     echo "3. Start creating automations with Claude Code!"
 fi
 echo ""

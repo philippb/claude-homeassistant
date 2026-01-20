@@ -9,63 +9,46 @@ description = "Home Assistant configuration management and validation tools"
 authors = [
     {name = "Home Assistant Config Management"}
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
-    "homeassistant>=2024.1.0",
+    "homeassistant>=2024.4.0",
     "voluptuous>=0.14.0",
     "pyyaml>=6.0.0",
+    "jsonschema>=4.26.0",
+    "requests>=2.32.3",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-    "black>=24.0.0",
-    "isort>=5.12.0",
-    "flake8>=7.0.0",
-    "mypy>=1.8.0",
-    "pylint>=3.0.0",
-    "pre-commit>=3.6.0",
-    "pytest>=8.0.0",
-    "pytest-cov>=4.0.0",
-    "pytest-mock>=3.12.0",
-    "types-PyYAML>=6.0.0",
+    "mypy>=1.19.1",
+    "prek>=0.2.30",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "pytest-mock>=3.15.1",
+    "ruff>=0.14.13",
+    "types-pyyaml>=6.0.12.20250915",
+    "types-requests>=2.31.0.6",
 ]
 
-[tool.black]
-line-length = 88
-target-version = ['py311']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | venv
-  | _build
-  | buck-out
-  | build
-  | dist
-  | config
-  | temp
-)/
-'''
+[tool.ruff]
+target-version = "py313"
 
-[tool.isort]
-profile = "black"
-line_length = 88
-multi_line_output = 3
-include_trailing_comma = true
-force_grid_wrap = 0
-use_parentheses = true
-ensure_newline_before_comments = true
-sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
-known_first_party = ["tools"]
-extend_skip_glob = ["venv/*", "config/*", "temp/*"]
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "C", "I", "N", "Q", "R", "S", "T"]
+ignore = ["T201", "C901", "S603", "S607", "S506"]
 
-# Note: flake8 configuration is in .flake8 file (doesn't support pyproject.toml)
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint.isort]
+known-first-party = ["tools"]
+
+[tool.ruff.lint.pylint]
+max-args = 10
+max-locals = 20
+max-returns = 10
+max-branches = 20
+max-statements = 60
 
 [tool.mypy]
 python_version = "3.11"
@@ -99,40 +82,6 @@ module = [
     "voluptuous.*",
 ]
 ignore_missing_imports = true
-
-[tool.pylint.messages_control]
-disable = [
-    "too-few-public-methods",
-    "too-many-arguments",
-    "too-many-locals",
-    "too-many-branches",
-    "too-many-statements",
-    "too-many-ancestors",
-    "too-many-nested-blocks",
-    "duplicate-code",
-    "fixme",
-    "unused-import",
-    "unused-argument",
-    "unused-variable",
-    "broad-exception-caught",
-    "subprocess-run-check",
-    "unspecified-encoding",
-    "unnecessary-pass",
-    "line-too-long",
-    "f-string-without-interpolation",
-    "no-else-return",
-    "bare-except",
-]
-
-[tool.pylint.format]
-max-line-length = 88
-
-[tool.pylint.design]
-max-args = 10
-max-locals = 20
-max-returns = 10
-max-branches = 20
-max-statements = 60
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

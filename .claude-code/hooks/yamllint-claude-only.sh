@@ -25,7 +25,6 @@ done
 # Run yamllint only on Claude-generated files
 if [ ${#CLAUDE_FILES[@]} -gt 0 ]; then
     echo "Running yamllint on ${#CLAUDE_FILES[@]} Claude-generated YAML files..."
-    source venv/bin/activate 2>/dev/null || true
     yamllint -c "$YAMLLINT_CONFIG" "${CLAUDE_FILES[@]}"
     EXIT_CODE=$?
 else

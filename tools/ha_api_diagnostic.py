@@ -45,9 +45,8 @@ def test_api_connection():
             data = response.json()
             print(f"   Message: {data.get('message', 'No message')}")
             return True
-        else:
-            print(f"   Error: {response.text}")
-            return False
+        print(f"   Error: {response.text}")
+        return False
     except Exception as e:
         print(f"   Exception: {e}")
         return False
@@ -133,9 +132,8 @@ def test_entity_registry_read():
                     print(f"      Unique ID: {entity.get('unique_id')}")
 
             return found_entities
-        else:
-            print(f"   ❌ Error: {response.text}")
-            return []
+        print(f"   ❌ Error: {response.text}")
+        return []
     except Exception as e:
         print(f"   ❌ Exception: {e}")
         return []
@@ -170,9 +168,8 @@ def test_states_endpoint():
                     print(f"      Attributes: {attrs}")
 
             return len(found_entities) == len(target_entities)
-        else:
-            print(f"   ❌ Error: {response.text}")
-            return False
+        print(f"   ❌ Error: {response.text}")
+        return False
     except Exception as e:
         print(f"   ❌ Exception: {e}")
         return False
@@ -212,8 +209,7 @@ def test_entity_rename(entity_data_list):
         if response.status_code == 200:
             print("   ✅ Method 1 successful!")
             return True
-        else:
-            print(f"   ❌ Method 1 failed: {response.text}")
+        print(f"   ❌ Method 1 failed: {response.text}")
 
     except Exception as e:
         print(f"   ❌ Method 1 exception: {e}")
@@ -232,8 +228,7 @@ def test_entity_rename(entity_data_list):
         if response.status_code == 200:
             print("   ✅ Method 2 successful!")
             return True
-        else:
-            print(f"   ❌ Method 2 failed: {response.text}")
+        print(f"   ❌ Method 2 failed: {response.text}")
 
     except Exception as e:
         print(f"   ❌ Method 2 exception: {e}")

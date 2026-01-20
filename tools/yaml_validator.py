@@ -25,6 +25,7 @@ def include_dir_named_constructor(loader, node):
     dirname = loader.construct_scalar(node)
     return f"!include_dir_named {dirname}"
 
+
 def include_dir_merge_named_constructor(loader, node):
     """Handle !include_dir_merge_named tag."""
     dirname = loader.construct_scalar(node)
@@ -60,9 +61,7 @@ HAYamlLoader.add_constructor("!include", include_constructor)
 HAYamlLoader.add_constructor(
     "!include_dir_merge_named", include_dir_merge_named_constructor
 )
-HAYamlLoader.add_constructor(
-    "!include_dir_named", include_dir_named_constructor
-)
+HAYamlLoader.add_constructor("!include_dir_named", include_dir_named_constructor)
 HAYamlLoader.add_constructor(
     "!include_dir_merge_list", include_dir_merge_list_constructor
 )
@@ -178,7 +177,7 @@ class YAMLValidator:
                 # Check for alias (recommended)
                 if "alias" not in automation:
                     self.warnings.append(
-                        f"{file_path}: Automation {i} missing 'alias' " f"(recommended)"
+                        f"{file_path}: Automation {i} missing 'alias' (recommended)"
                     )
 
             return all_valid
@@ -208,7 +207,7 @@ class YAMLValidator:
             for script_name, script_config in scripts.items():
                 if not isinstance(script_config, dict):
                     self.errors.append(
-                        f"{file_path}: Script '{script_name}' must be a " f"dictionary"
+                        f"{file_path}: Script '{script_name}' must be a dictionary"
                     )
                     all_valid = False
                     continue

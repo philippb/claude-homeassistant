@@ -1,0 +1,104 @@
+version: "3"
+
+vars:
+  TEST_DIR: tests
+  COVERAGE_DIR: htmlcov
+
+tasks:
+  uv:
+    desc: Install uv
+    status:
+      - command -v uv
+    cmds:
+      - cmd: curl -LsSf https://astral.sh/uv/install.sh | sh
+        platforms: [linux, darwin]
+      - cmd: powershell -ExecutionPolicy BypassCurrentUser -c "irm https://astral.sh/uv/install.ps1 | iex"
+        platforms: [windows]
+      - echo "uv installed successfully, you may need to restart the terminal or log out and back in to use it."
+
+  pre-commit-install:
+    desc: Install prek
+    deps: [uv]
+    status:
+      - command -v prek
+    cmds:
+      - cmd: uv tool install prek
+
+  pre-commit-init:
+    desc: Setup pre-commit hooks
+    deps: [pre-commit-install]
+    cmds:
+      - cmd: prek install
+
+  pre-commit:
+    desc: Run pre-commit on all files
+    aliases: [pre-commit-all]
+    deps: [pre-commit]
+    cmds:
+      - prek run -a
+
+  format:
+    desc: Format code
+    deps: [uv]
+    cmds:
+      - uv run ruff check --select I --fix {{.TOOLS_PATH}}/
+      - uv run ruff format {{.TOOLS_PATH}}/
+
+  lint:
+    desc: Check code quality
+    deps: [uv]
+    cmds:
+      - uv run ruff check --fix {{.TOOLS_PATH}}/
+
+  type-check:
+    desc: Type check code with mypy
+    deps: [uv]
+    cmds:
+      - uv run mypy {{.TOOLS_PATH}}/
+
+  check-all:
+    desc: Run all code quality checks
+    deps: [format, lint, type-check]
+
+  test:
+    desc: Run tests
+    deps: [uv]
+    cmds:
+      - uv run pytest {{.TEST_DIR}} -v
+
+  test-coverage:
+    desc: Run tests with coverage
+    deps: [uv]
+    cmds:
+      - uv run pytest {{.TEST_DIR}} --cov={{.TOOLS_PATH}} --cov-report=html --cov-report=term-missing
+
+  test-verbose:
+    desc: Run tests with verbose output
+    deps: [uv]
+    cmds:
+      - uv run pytest {{.TEST_DIR}} -v -s
+
+  clean-dev:
+    desc: Clean development artifacts
+    cmds:
+      - cmd: rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage {{.COVERAGE_DIR}} *.egg-info/
+        platform: [linux, darwin]
+      - cmd: powershell Remove-Item -Path .pytest_cache, .mypy_cache, .ruff_cache, .coverage, {{.COVERAGE_DIR}}, *.egg-info -Recurse -Force
+        platform: [windows]
+
+  update-deps:
+    desc: Update development dependencies
+    cmds:
+      - uv lock --upgrade
+
+  workflow:
+    desc: Development workflow shortcut
+    deps: [check-all, test]
+    sources:
+      - "{{.TOOLS_PATH}}/*.py"
+      - "{{.TEST_DIR}}/*.py"
+
+  watch:
+    desc: Watch mode for development
+    cmds:
+      - task dev:workflow --watch

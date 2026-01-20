@@ -13,14 +13,13 @@ if [[ "$CLAUDE_TOOL_NAME" == "Edit" || "$CLAUDE_TOOL_NAME" == "Write" || "$CLAUD
         echo "🔍 Running Home Assistant configuration validation after file change..."
 
         # Check if validation tools exist
-        if [ ! -f "tools/run_tests.py" ] || [ ! -d "venv" ]; then
+        if [ ! -f "tools/run_tests.py" ]; then
             echo "⚠️  Home Assistant validation tools not found. Please run setup first."
             exit 0
         fi
 
         # Run validation (we're already in project root)
-        source venv/bin/activate
-        python tools/run_tests.py
+        uv run python tools/run_tests.py
 
         validation_result=$?
 

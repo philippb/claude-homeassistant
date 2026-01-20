@@ -51,11 +51,10 @@ def get_entity_display_name(entity: Dict) -> str:
     """Get the best display name for an entity."""
     if entity.get("name"):
         return entity["name"]
-    elif entity.get("original_name"):
+    if entity.get("original_name"):
         return entity["original_name"]
-    else:
-        # Extract from entity_id
-        return entity["entity_id"].split(".")[-1].replace("_", " ").title()
+    # Extract from entity_id
+    return entity["entity_id"].split(".")[-1].replace("_", " ").title()
 
 
 def categorize_entities(entities: List[Dict], area_names: Dict[str, str]) -> Dict:
@@ -194,7 +193,7 @@ def print_detailed_by_domain(categorized: Dict, domain_filter: Optional[str] = N
                 f" ({entity['device_class']})" if entity.get("device_class") else ""
             )
 
-            print(f"   {entity['entity_id']}{device_class_str}" f"{unit_str}{area_str}")
+            print(f"   {entity['entity_id']}{device_class_str}{unit_str}{area_str}")
 
 
 def print_by_area(categorized: Dict, area_filter: Optional[str] = None):
@@ -261,7 +260,7 @@ def search_entities(categorized: Dict, query: str):
             f" ({entity['device_class']})" if entity.get("device_class") else ""
         )
 
-        print(f"   {entity['entity_id']}{device_class_str}" f"{unit_str}{area_str}")
+        print(f"   {entity['entity_id']}{device_class_str}{unit_str}{area_str}")
 
 
 def main():

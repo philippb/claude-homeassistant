@@ -72,9 +72,7 @@ def secret_constructor(loader, node):
 
 # Register custom constructors
 HAYamlLoader.add_constructor("!include", include_constructor)
-HAYamlLoader.add_constructor(
-    "!include_dir_named", include_dir_named_constructor
-)
+HAYamlLoader.add_constructor("!include_dir_named", include_dir_named_constructor)
 HAYamlLoader.add_constructor(
     "!include_dir_merge_named", include_dir_merge_named_constructor
 )
@@ -276,7 +274,11 @@ class ReferenceValidator:
                             devices.add(value)
                     elif isinstance(value, list):
                         for device in value:
-                            if isinstance(device, str) and not device.startswith("!") and not self.is_template(device):
+                            if (
+                                isinstance(device, str)
+                                and not device.startswith("!")
+                                and not self.is_template(device)
+                            ):
                                 devices.add(device)
                 else:
                     devices.update(self.extract_device_references(value))
@@ -383,7 +385,7 @@ class ReferenceValidator:
 
                 if entity_id in disabled_entities:
                     self.warnings.append(
-                        f"{file_path}: References disabled entity " f"'{entity_id}'"
+                        f"{file_path}: References disabled entity '{entity_id}'"
                     )
                 else:
                     self.errors.append(f"{file_path}: Unknown entity '{entity_id}'")
@@ -496,10 +498,7 @@ class ReferenceValidator:
             for domain, info in sorted(summary.items()):
                 enabled_count = info["enabled"]
                 disabled_count = info["disabled"]
-                print(
-                    f"  {domain}: {enabled_count} enabled, "
-                    f"{disabled_count} disabled"
-                )
+                print(f"  {domain}: {enabled_count} enabled, {disabled_count} disabled")
                 if info["examples"]:
                     print(f"    Examples: {', '.join(info['examples'])}")
             print()

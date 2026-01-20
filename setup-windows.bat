@@ -20,20 +20,6 @@ set MISSING_REQUIRED=0
 set MISSING_OPTIONAL=0
 set MISSING_LIST=
 
-REM --- Check Python ---
-set PYTHON_OK=0
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo [MISSING] Python - REQUIRED
-    set MISSING_REQUIRED=1
-    set "MISSING_LIST=!MISSING_LIST!  - Python: https://www.python.org/downloads/\n"
-) else (
-    for /f "tokens=2 delims= " %%i in ('python --version 2^>nul') do set PYTHON_VERSION=%%i
-    if "!PYTHON_VERSION!"=="" set PYTHON_VERSION=Unknown
-    echo [OK] Python !PYTHON_VERSION!
-    set PYTHON_OK=1
-)
-
 REM --- Check Git ---
 set GIT_OK=0
 where git >nul 2>&1
@@ -184,53 +170,30 @@ echo.
 REM ===============================
 REM Phase 4: Project Setup
 REM ===============================
-echo Setting up Python environment...
-
-REM Create virtual environment
-if not exist "venv" (
-    echo Creating Python virtual environment...
-    python -m venv venv
-) else (
-    echo Virtual environment already exists
-)
-
-REM Activate virtual environment
-echo Activating virtual environment...
-call venv\Scripts\activate.bat
-
-REM Upgrade pip
-echo Upgrading pip...
-python -m pip install --upgrade pip
-
-REM Install dependencies
-echo Installing Python dependencies...
-pip install homeassistant voluptuous pyyaml jsonschema requests
-
-echo.
 echo Verifying Python environment...
 
 REM Verify critical dependencies are importable
 set VERIFY_FAILED=0
 
-python -c "import yaml" >nul 2>&1
+uv run python -c "import yaml" >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] PyYAML not installed correctly
     set VERIFY_FAILED=1
 )
 
-python -c "import voluptuous" >nul 2>&1
+uv run python -c "import voluptuous" >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Voluptuous not installed correctly
     set VERIFY_FAILED=1
 )
 
-python -c "import jsonschema" >nul 2>&1
+uv run python -c "import jsonschema" >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] jsonschema not installed correctly
     set VERIFY_FAILED=1
 )
 
-python -c "import requests" >nul 2>&1
+uv run python -c "import requests" >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] requests not installed correctly
     set VERIFY_FAILED=1
@@ -239,24 +202,11 @@ if errorlevel 1 (
 if %VERIFY_FAILED%==1 (
     echo.
     echo [WARNING] Some dependencies failed to install. Try running:
-    echo    venv\Scripts\activate
-    echo    pip install --force-reinstall homeassistant voluptuous pyyaml jsonschema requests
+    echo    uv sync
     echo.
 ) else (
     echo [OK] All Python dependencies verified
 )
-
-echo.
-echo Checking project setup...
-
-REM Check if Makefile exists
-if not exist "Makefile" (
-    echo [ERROR] Makefile not found. Are you in the correct directory?
-    pause
-    exit /b 1
-)
-
-echo [OK] Makefile found
 
 echo.
 echo ========================================================
@@ -364,20 +314,6 @@ if "%ssh_option%"=="1" (
     set SSH_CONFIGURED=false
 )
 
-REM Update Makefile with the provided host
-echo.
-echo Updating Makefile configuration...
-if exist "Makefile" (
-    REM Create backup
-    copy Makefile Makefile.backup >nul
-
-    REM Update HA_HOST in Makefile (Windows batch doesn't have sed, so we use PowerShell)
-    powershell -Command "(Get-Content Makefile) -replace '^HA_HOST = .*', 'HA_HOST = %HA_HOST%' | Set-Content Makefile"
-    echo [OK] Makefile updated with HA_HOST = %HA_HOST%
-) else (
-    echo [ERROR] Makefile not found - you may need to configure manually
-)
-
 echo.
 echo ========================================================
 echo   Setup Complete!
@@ -394,12 +330,12 @@ if "%SSH_CONFIGURED%"=="true" (
 echo.
 echo Next steps:
 if "%SSH_CONFIGURED%"=="true" (
-    echo   1. Pull your configuration:  make pull
+    echo   1. Pull your configuration:  task pull
     echo   2. Start Claude Code:        claude
     echo   3. Ask Claude to help with your Home Assistant!
 ) else (
     echo   1. Complete SSH setup (see instructions above)
-    echo   2. Pull your configuration:  make pull
+    echo   2. Pull your configuration:  task pull
     echo   3. Start Claude Code:        claude
 )
 echo.

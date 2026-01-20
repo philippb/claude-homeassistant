@@ -48,7 +48,7 @@ setup-windows.bat
 ### After Setup
 1. **Configure your Home Assistant connection** (the script will show you how)
 2. **Open Claude Code** ([download here](https://claude.com/solutions/coding) if not installed) and navigate to your project folder
-3. **Pull your configuration** by typing `make pull` in Claude Code
+3. **Pull your configuration** by typing `task pull` in Claude Code
 4. **Start creating automations** with Claude Code!
 
 **That's it!** The scripts handle all the technical setup for you. Claude Code makes running commands super easy - just type them directly!
@@ -62,7 +62,7 @@ This repository provides a complete framework for managing Home Assistant config
 ### Repository Structure
 - **Template Configs**: The `config/` folder contains sanitized example configurations (no secrets)
 - **Validation Tools**: The `tools/` folder has all validation scripts
-- **Management Commands**: The `Makefile` contains pull/push commands
+- **Management Commands**: The `Taskfile.yaml` contains pull/push commands
 - **Development Setup**: `pyproject.toml` and other dev files for tooling
 
 ### User Workflow
@@ -71,7 +71,6 @@ This repository provides a complete framework for managing Home Assistant config
 ```bash
 git clone git@github.com:philippb/claude-homeassistant.git
 cd claude-homeassistant
-make setup  # Creates Python venv and installs dependencies
 ```
 
 #### 2. Configure Connection
@@ -94,8 +93,6 @@ HA_REMOTE_PATH=/config/
 # Local Configuration (optional - defaults provided)
 LOCAL_CONFIG_PATH=config/
 BACKUP_DIR=backups
-VENV_PATH=venv
-TOOLS_PATH=tools
 ```
 
 #### 2b. Set Up SSH Access to Home Assistant
@@ -181,7 +178,7 @@ To get your `HA_TOKEN`:
 
 #### 3. Pull Your Real Configuration
 ```bash
-make pull  # Downloads YOUR actual HA config, overwriting template files
+task pull  # Downloads YOUR actual HA config, overwriting template files
 ```
 
 **Important**: This step replaces the template `config/` folder with your real Home Assistant configuration files.
@@ -193,36 +190,35 @@ make pull  # Downloads YOUR actual HA config, overwriting template files
 
 #### 5. Push Changes Back
 ```bash
-make push  # Uploads changes back to your HA instance (with validation)
+task push  # Uploads changes back to your HA instance (with validation)
 ```
 
 ### How It Works
 
 1. **Template Start**: You begin with example configs showing proper structure
-2. **Real Data**: First `make pull` overwrites templates with your actual HA setup
+2. **Real Data**: First `task pull` overwrites templates with your actual HA setup
 3. **Local Development**: Edit real configs locally with validation safety
-4. **Safe Deployment**: `make push` validates before uploading to prevent broken configs
+4. **Safe Deployment**: `task push` validates before uploading to prevent broken configs
 
 This gives you a complete development environment while only modifying your HA instance when completed.
 
 ## ⚙️ Prerequisites
 
-### Make Command
+### Task Command
 
-This project uses `make` commands for configuration management. If you don't have `make` installed:
+This project uses `task` commands for configuration management. If you don't have `task` installed:
 
 **macOS:**
 ```bash
-xcode-select --install  # Installs Command Line Tools including make
+brew install go-task/tap/go-task
 ```
 
 **Windows:**
-- **Option 1**: Use WSL (Windows Subsystem for Linux) - recommended
-- **Option 2**: Install via Chocolatey: `choco install make`
-- **Option 3**: Use Git Bash (includes make)
-- **Option 4**: Install MinGW-w64
+```cmd
+winget install Task.Task
+```
 
-**Alternative**: If you can't install `make`, you can run the underlying commands directly by checking the `Makefile` for the actual command syntax.
+**Alternative**: If you can't install `task`, you can run the underlying commands directly by checking the `Taskfile.yaml` for the actual command syntax.
 
 ## 📁 Project Structure
 
@@ -231,47 +227,46 @@ xcode-select --install  # Installs Command Line Tools including make
 │   ├── configuration.yaml
 │   ├── automations.yaml
 │   ├── scripts.yaml
-│   └── .storage/          # Entity registry (pulled from HA)
-├── tools/                 # Validation scripts for Claude
-│   ├── run_tests.py       # Main test suite runner
-│   ├── yaml_validator.py  # YAML syntax validation
-│   ├── reference_validator.py # Entity reference validation
-│   ├── ha_official_validator.py # Official HA validation
-│   └── entity_explorer.py # Entity discovery tool
-├── .claude-code/          # Claude Code project settings
-│   ├── hooks/            # Automated validation hooks
-│   └── settings.json     # Project configuration
-├── .env.example          # Environment configuration template
-├── venv/                 # Python virtual environment
-├── Makefile              # Management commands
-└── CLAUDE.md             # Claude Code instructions
+│   └── .storage/                 # Entity registry (pulled from HA)
+├── tools/                        # Validation scripts for Claude
+│   ├── run_tests.py              # Main test suite runner
+│   ├── yaml_validator.py         # YAML syntax validation
+│   ├── reference_validator.py    # Entity reference validation
+│   ├── ha_official_validator.py  # Official HA validation
+│   └── entity_explorer.py        # Entity discovery tool
+├── .claude-code/                 # Claude Code project settings
+│   ├── hooks/                    # Automated validation hooks
+│   └── settings.json             # Project configuration
+├── .env.example                  # Environment configuration template
+├── .venv/                        # Python virtual environment
+├── Taskfile.yaml                 # Management commands
+└── CLAUDE.md                     # Claude Code instructions
 ```
 
 ## 🛠️ Available Commands
 
 ### Configuration Management
 ```bash
-make pull      # Pull latest config from Home Assistant
-make push      # Push local config to HA (with validation)
-make backup    # Create timestamped backup
-make validate  # Run all validation tests
+task pull      # Pull latest config from Home Assistant
+task push      # Push local config to HA (with validation)
+task backup    # Create timestamped backup
+task validate  # Run all validation tests
 ```
 
 ### Entity Discovery
 ```bash
-make entities                           # Show entity summary
-make entities ARGS='--domain climate'   # Climate entities only
-make entities ARGS='--search motion'    # Search for motion sensors
-make entities ARGS='--area kitchen'     # Kitchen entities only
-make entities ARGS='--full'            # Complete detailed output
+task entities                           # Show entity summary
+task entities ARGS='--domain climate'   # Climate entities only
+task entities ARGS='--search motion'    # Search for motion sensors
+task entities ARGS='--area kitchen'     # Kitchen entities only
+task entities ARGS='--full'             # Complete detailed output
 ```
 
 ### Individual Validators
 ```bash
-. venv/bin/activate
-python tools/yaml_validator.py         # YAML syntax only
-python tools/reference_validator.py    # Entity references only
-python tools/ha_official_validator.py  # Official HA validation
+uv run python tools/yaml_validator.py         # YAML syntax only
+uv run python tools/reference_validator.py    # Entity references only
+python tools/ha_official_validator.py         # Official HA validation
 ```
 
 ## 🔧 Validation System
@@ -342,7 +337,7 @@ With Claude Code, you can:
    ```
 
 3. **Automatic validation ensures correctness**
-4. **Deploy safely with `make push`**
+4. **Deploy safely with `task push`**
 
 ## 📊 Entity Discovery
 
@@ -350,13 +345,13 @@ The entity explorer helps you understand what's available:
 
 ```bash
 # Find all motion sensors
-. venv/bin/activate && python tools/entity_explorer.py --search motion
+uv run python tools/entity_explorer.py --search motion
 
 # Show all climate controls
-. venv/bin/activate && python tools/entity_explorer.py --domain climate
+uv run python tools/entity_explorer.py --domain climate
 
 # Kitchen devices only
-. venv/bin/activate && python tools/entity_explorer.py --area kitchen
+uv run python tools/entity_explorer.py --area kitchen
 ```
 
 ## 🔒 Security & Best Practices
@@ -370,8 +365,8 @@ The entity explorer helps you understand what's available:
 ## 🐛 Troubleshooting
 
 ### Validation Errors
-1. Check YAML syntax first: `. venv/bin/activate && python tools/yaml_validator.py`
-2. Verify entity references: `. venv/bin/activate && python tools/reference_validator.py`
+1. Check YAML syntax first: `uv run python tools/yaml_validator.py`
+2. Verify entity references: `uv run python tools/reference_validator.py`
 3. Check HA logs if official validation fails
 
 ### SSH Connection Issues
@@ -434,17 +429,16 @@ grep -A 5 "Host homeassistant" ~/.ssh/config
 # 3. Test SSH connection
 ssh homeassistant "ls /config"
 
-# 4. Test rsync (what make pull/push uses)
+# 4. Test rsync (what task pull/push uses)
 rsync -avz --dry-run homeassistant:/config/ ./test/
 ```
 
 </details>
 
 ### Missing Dependencies
-```bash
-. venv/bin/activate
-pip install homeassistant voluptuous pyyaml jsonschema requests
-```
+
+uv should take care of the python environment and its dependencies.
+Run `uv sync` to ensure the environment has the dependencies declared in `pyproject.toml`.
 
 ## 🔧 Configuration
 
@@ -468,8 +462,6 @@ HA_REMOTE_PATH=/config/                  # Remote config path
 # Local Configuration (optional - defaults provided)
 LOCAL_CONFIG_PATH=config/                # Local config directory
 BACKUP_DIR=backups                       # Backup directory
-VENV_PATH=venv                          # Python virtual environment path
-TOOLS_PATH=tools                        # Tools directory
 ```
 
 ### Claude Code Settings

@@ -10,6 +10,7 @@ config/.uuid
 config/.HA_VERSION
 
 # Python
+.venv/
 venv/
 venv
 __pycache__/
@@ -142,5 +143,5 @@ coverage.xml
 .python_check.log
 *.log
 
-# Virtual Environment symlink (points to ../venv)
-# Note: Both venv/ and venv symlink are ignored above
+.tasks
+.ruff_cache

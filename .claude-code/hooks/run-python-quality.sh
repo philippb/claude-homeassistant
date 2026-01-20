@@ -22,4 +22,4 @@ export FORCE_PYTHON_CHECKS=true
 ./.claude-code/hooks/posttooluse-python-quality.sh
 
 echo -e "${GREEN}✅ Full Python quality check completed!${NC}"
-echo -e "${YELLOW}💡 Tip: Use 'make -f Makefile.dev dev-workflow' for development workflow${NC}"
+echo -e "${YELLOW}💡 Tip: Use 'task dev:workflow' for development workflow${NC}"

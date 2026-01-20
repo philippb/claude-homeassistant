@@ -51,11 +51,10 @@ def reload_config():
         if response.status_code == 200:
             print("✅ Configuration reloaded successfully!")
             return True
-        else:
-            print(f"❌ Failed to reload configuration: {response.status_code}")
-            if response.text:
-                print(f"   Response: {response.text}")
-            return False
+        print(f"❌ Failed to reload configuration: {response.status_code}")
+        if response.text:
+            print(f"   Response: {response.text}")
+        return False
 
     except requests.exceptions.Timeout:
         print("❌ Timeout: Home Assistant took too long to respond")

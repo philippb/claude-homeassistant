@@ -18,7 +18,7 @@ class ValidationTestRunner:
         """Initialize the test runner."""
         self.config_dir = Path(config_dir).resolve()
         self.tools_dir = Path(__file__).parent
-        self.venv_dir = self.tools_dir.parent / "venv"
+        self.venv_dir = self.tools_dir.parent / ".venv"
         self.results: Dict[str, Dict[str, Any]] = {}
 
     def get_python_executable(self) -> str:
@@ -155,8 +155,7 @@ class ValidationTestRunner:
             print("\n🎉 All tests passed! Your Home Assistant configuration is valid.")
         else:
             print(
-                f"\n⚠️  {failed_tests} test(s) failed. "
-                "Please review the errors above."
+                f"\n⚠️  {failed_tests} test(s) failed. Please review the errors above."
             )
 
         print()

@@ -23,21 +23,14 @@ NC='\033[0m' # No Color
 # Configuration
 TOOLS_DIR="tools"
 TEST_DIR="tests"
-MAKEFILE="Makefile.dev"
 
 # Check if we're in a Python project with our development setup
-if [[ ! -f "$MAKEFILE" ]] || [[ ! -d "$TOOLS_DIR" ]] || [[ ! -f "pyproject.toml" ]]; then
+if [[ ! -d "$TOOLS_DIR" ]] || [[ ! -f "pyproject.toml" ]]; then
     # Not a Python project with our dev setup, skip silently
     exit 0
 fi
 
 echo -e "${BLUE}🐍 Running Python Code Quality Checks...${NC}"
-
-# Check if virtual environment exists
-if [[ ! -L "venv" ]] && [[ ! -d "venv" ]]; then
-    echo -e "${YELLOW}⚠️  Virtual environment not found. Skipping Python checks.${NC}"
-    exit 0
-fi
 
 # Function to run command and show result
 run_check() {
@@ -68,35 +61,22 @@ PYTHON_FILES_EXIST=$(find tools/ -name "*.py" 2>/dev/null | wc -l)
 if [[ "$FORCE_RUN" == "true" ]] || [[ "$PYTHON_FILES_EXIST" -gt 0 ]] && [[ -d tools/ ]]; then
     echo -e "${BLUE}📝 Python files detected, running quality checks...${NC}"
 
-    # 1. Code Formatting (Black + isort)
+    # 1. Code Formatting (Ruff)
     echo -e "\n${BLUE}🎨 Code Formatting${NC}"
-    if ! run_check "Black formatting" "make -f $MAKEFILE dev-format" "🖤"; then
+    if ! run_check "Ruff formatting" "task dev:format" "🖤"; then
         FAILED=1
     fi
 
-    # 2. Style Checking (flake8)
-    echo -e "\n${BLUE}📏 Style Checking${NC}"
-    if ! run_check "Flake8 style check" "source venv/bin/activate && flake8 $TOOLS_DIR/ --config .flake8" "🔍"; then
+    # 2. Style Checking and Code Analysis (Ruff)
+    echo -e "\n${BLUE}📏 Style Checking and Code Analysis${NC}"
+    if ! run_check "Ruff style check" "uv run ruff check $TOOLS_DIR/" "🔍"; then
         FAILED=1
     fi
 
-    # 3. Code Analysis (pylint) - Allow to fail but show results
-    echo -e "\n${BLUE}🔬 Code Analysis${NC}"
-    echo -e "${BLUE}🧹 Running pylint...${NC}"
-    if source venv/bin/activate && pylint $TOOLS_DIR/ --rcfile=pyproject.toml > /tmp/pylint.log 2>&1; then
-        # Extract score from output
-        SCORE=$(grep "Your code has been rated" /tmp/pylint.log | tail -1 || echo "No score found")
-        echo -e "${GREEN}✅ Pylint completed: ${SCORE}${NC}"
-    else
-        SCORE=$(grep "Your code has been rated" /tmp/pylint.log | tail -1 || echo "No score found")
-        echo -e "${YELLOW}⚠️  Pylint completed with warnings: ${SCORE}${NC}"
-        # Don't fail on pylint warnings, just show them
-    fi
-
-    # 4. Type Checking (mypy) - Allow to fail but show results
+    # 3. Type Checking (mypy) - Allow to fail but show results
     echo -e "\n${BLUE}🔧 Type Checking${NC}"
     echo -e "${BLUE}🔍 Running mypy...${NC}"
-    if source venv/bin/activate && mypy $TOOLS_DIR/ > /tmp/mypy.log 2>&1; then
+    if uv run mypy $TOOLS_DIR/ > /tmp/mypy.log 2>&1; then
         echo -e "${GREEN}✅ Mypy type checking passed${NC}"
     else
         ERROR_COUNT=$(grep -c "error:" /tmp/mypy.log 2>/dev/null || echo "0")
@@ -109,10 +89,10 @@ if [[ "$FORCE_RUN" == "true" ]] || [[ "$PYTHON_FILES_EXIST" -gt 0 ]] && [[ -d to
         fi
     fi
 
-    # 5. Tests (if they exist)
+    # 4. Tests (if they exist)
     if [[ -d "$TEST_DIR" ]] && find "$TEST_DIR" -name "test_*.py" 2>/dev/null | grep -q .; then
         echo -e "\n${BLUE}🧪 Running Tests${NC}"
-        if ! run_check "pytest tests" "make -f $MAKEFILE dev-test" "🧪"; then
+        if ! run_check "pytest tests" "task dev:test" "🧪"; then
             FAILED=1
         fi
     else

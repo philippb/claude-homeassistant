@@ -1,0 +1,179 @@
+version: "3"
+
+dotenv:
+  - .env
+
+includes:
+  dev: Taskfile.dev.yaml
+
+vars:
+  HA_REMOTE_PATH: '{{ .HA_REMOTE_PATH | default "/config/" }}'
+  LOCAL_CONFIG_PATH: '{{ .LOCAL_CONFIG_PATH | default "config/" }}'
+  BACKUP_DIR: '{{ .BACKUP_DIR | default "backups" }}'
+  TOOLS_PATH: tools
+
+silent: true
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  check-rsync:
+    desc: Check if rsync is installed
+    status:
+      - command -v rsync
+    cmds:
+      - echo "please install rsync."
+
+  check-env:
+    desc: Check environment variables
+    cmds:
+      - |
+        if [ ! -f ".env" ]; then
+          echo "⚠️ Warning: .env file not found. Copy .env.example to .env and configure your settings."
+        fi
+      - |
+        if [ "{{.HA_HOST}}" = "your_homeassistant_host" ] || [ -z "{{.HA_HOST}}" ]; then
+          echo "❌ Error: HA_HOST not configured. Please set it in your .env file."
+          echo "Example: HA_HOST=homeassistant.local"
+          exit 1
+        fi
+
+  pull:
+    desc: Pull configuration from Home Assistant
+    deps: [check-env, check-rsync]
+    cmds:
+      - rsync -avz --delete --exclude-from=.rsync-excludes {{.HA_HOST}}:{{.HA_REMOTE_PATH}} {{.LOCAL_CONFIG_PATH}}
+      - task: validate
+
+  push:
+    desc: Push configuration to Home Assistant
+    deps: [check-env, check-rsync, validate, dev:uv]
+    cmds:
+      - rsync -avz --delete --exclude-from=.rsync-excludes {{.LOCAL_CONFIG_PATH}} {{.HA_HOST}}:{{.HA_REMOTE_PATH}}
+      - uv run python {{.TOOLS_PATH}}/reload_config.py
+
+  validate:
+    desc: Validate Home Assistant configuration
+    deps: [dev:uv]
+    aliases: [test]
+    cmds:
+      - uv run python {{.TOOLS_PATH}}/run_tests.py
+
+  backup:
+    desc: Backup current configuration
+    cmds:
+      - mkdir -p {{.BACKUP_DIR}}
+      - |
+        timestamp=$(date +%Y%m%d_%H%M%S)
+        backup_name="{{.BACKUP_DIR}}/ha_config_$timestamp"
+        tar -czf "$backup_name.tar.gz" {{.LOCAL_CONFIG_PATH}}
+        echo "Backup created: $backup_name.tar.gz"
+
+  status:
+    desc: Display Home Assistant configuration status
+    deps: [dev:uv]
+    cmds:
+      - 'echo "Config directory: {{.LOCAL_CONFIG_PATH}}"'
+      - 'echo "Remote host: {{.HA_HOST}}"'
+      - |
+        if [ -f "{{.LOCAL_CONFIG_PATH}}configuration.yaml" ]; then
+          echo "✓ Configuration file found"
+        else
+          echo "✗ Configuration file missing"
+        fi
+      - |
+        if [ -d "{{.LOCAL_CONFIG_PATH}}.storage" ]; then
+          echo "✓ Storage directory found"
+        else
+          echo "✗ Storage directory missing"
+        fi
+      - echo ""
+      - echo "Entity Summary:"
+      - uv run python {{.TOOLS_PATH}}/reference_validator.py 2>/dev/null | grep "Examples:" -A 1 -B 1 | head -20
+
+  entities:
+    desc: Home Assistant Entity Explorer
+    deps: [dev:uv]
+    cmds:
+      - echo "Home Assistant Entity Explorer"
+      - echo "Usage examples:"
+      - echo "  task entities                    - Show summary of all entities"
+      - echo "  task entities -- climate         - Show only climate entities"
+      - echo "  task entities -- kitchen         - Show only kitchen entities"
+      - echo "  task entities -- temp            - Search for temperature entities"
+      - echo "  task entities -- --full          - Show complete detailed output"
+      - echo ""
+      - uv run python {{.TOOLS_PATH}}/entity_explorer.py {{.CLI_ARGS}}
+
+  reload:
+    desc: Reload Home Assistant configuration
+    deps: [dev:uv]
+    cmds:
+      - uv run python {{.TOOLS_PATH}}/reload_config.py
+
+  format-yaml:
+    desc: Format YAML files
+    cmds:
+      - |
+        if [ -n "{{.FILES}}" ]; then
+          for file in {{.FILES}}; do
+            if [ -f "$file" ]; then
+              echo "Formatting: $file"
+              .claude-code/hooks/yaml-formatter.sh "$file"
+            else
+              echo "Warning: File not found: $file"
+            fi
+          done
+        else
+          for file in $(find {{.LOCAL_CONFIG_PATH}} -name "*.yaml" -o -name "*.yml"); do
+            if [ -f "$file" ]; then
+              echo "Formatting: $file"
+              .claude-code/hooks/yaml-formatter.sh "$file"
+            fi
+          done
+        fi
+
+  clean:
+    desc: Clean up temporary files and directories
+    cmds:
+      - find . -name "*.pyc" -delete
+      - find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+      - find . -name "*.log" -delete 2>/dev/null || true
+
+  pull-storage:
+    desc: Pull Home Assistant storage
+    deps: [check-rsync]
+    cmds:
+      - rsync -avz {{.HA_HOST}}:{{.HA_REMOTE_PATH}}.storage/ {{.LOCAL_CONFIG_PATH}}.storage/
+
+  validate-yaml:
+    desc: Validate YAML files
+    deps: [dev:uv]
+    cmds:
+      - uv run python {{.TOOLS_PATH}}/yaml_validator.py
+
+  validate-references:
+    desc: Validate Home Assistant references
+    deps: [dev:uv]
+    cmds:
+      - uv run python {{.TOOLS_PATH}}/reference_validator.py
+
+  validate-ha:
+    desc: Validate Home Assistant configuration
+    deps: [dev:uv]
+    cmds:
+      - uv run python {{.TOOLS_PATH}}/ha_official_validator.py
+
+  test-ssh:
+    desc: Test SSH connection to Home Assistant
+    silent: true
+    cmds:
+      - |
+        if ssh -o ConnectTimeout=10 {{.HA_HOST}} "echo 'Connection successful'"; then
+          echo "✓ SSH connection working"
+        else
+          echo "✗ SSH connection failed"
+        fi
