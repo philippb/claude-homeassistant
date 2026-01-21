@@ -8,8 +8,8 @@ includes:
 
 vars:
   HA_REMOTE_PATH: '{{ .HA_REMOTE_PATH | default "/config/" }}'
-  LOCAL_CONFIG_PATH: '{{ .LOCAL_CONFIG_PATH | default "config/" }}'
-  BACKUP_DIR: '{{ .BACKUP_DIR | default "backups" }}'
+  LOCAL_CONFIG_PATH: config/
+  BACKUP_DIR: backups
   TOOLS_PATH: tools
 
 silent: true

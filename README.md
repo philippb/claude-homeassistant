@@ -75,6 +75,7 @@ cd claude-homeassistant
 
 #### 2. Configure Connection
 Copy the example environment file and configure your settings:
+
 ```bash
 cp .env.example .env
 # Edit .env with your actual Home Assistant details
@@ -89,10 +90,6 @@ HA_URL=http://your_homeassistant_host:8123
 # SSH Configuration for rsync operations
 HA_HOST=your_homeassistant_host
 HA_REMOTE_PATH=/config/
-
-# Local Configuration (optional - defaults provided)
-LOCAL_CONFIG_PATH=config/
-BACKUP_DIR=backups
 ```
 
 #### 2b. Set Up SSH Access to Home Assistant
@@ -458,10 +455,6 @@ HA_URL=http://your_homeassistant_host:8123  # HA instance URL
 # SSH Configuration for rsync operations
 HA_HOST=your_homeassistant_host          # SSH hostname for HA
 HA_REMOTE_PATH=/config/                  # Remote config path
-
-# Local Configuration (optional - defaults provided)
-LOCAL_CONFIG_PATH=config/                # Local config directory
-BACKUP_DIR=backups                       # Backup directory
 ```
 
 ### Claude Code Settings
