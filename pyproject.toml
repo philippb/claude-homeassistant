@@ -1,9 +1,12 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.9.26,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
 
 [project]
-name = "ha-config-tools"
+name = "tools"
 version = "1.0.0"
 description = "Home Assistant configuration management and validation tools"
 authors = [
@@ -35,7 +38,7 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "C", "I", "N", "Q", "R", "S", "T"]
-ignore = ["T201", "C901", "S603", "S607", "S506"]
+ignore = ["T201", "S506", "C901"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -51,7 +54,7 @@ max-branches = 20
 max-statements = 60
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 warn_unused_configs = true
 # Relaxed settings for existing codebase
 disallow_untyped_defs = false

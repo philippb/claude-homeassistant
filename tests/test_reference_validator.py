@@ -102,7 +102,7 @@ class TestReferenceValidatorUUID(unittest.TestCase):
 
         with open(self.storage_dir / "core.area_registry", "w") as f:
             json.dump(self.area_registry_data, f)
-        self.validator = ReferenceValidator(str(self.config_dir))
+        self.validator = ReferenceValidator(self.config_dir)
 
     def tearDown(self):
         """Clean up test fixtures."""

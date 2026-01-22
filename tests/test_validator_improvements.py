@@ -19,8 +19,8 @@ class TestValidatorImprovements(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.config_dir = Path(self.temp_dir)
 
-        self.yaml_validator = YAMLValidator(str(self.config_dir))
-        self.ha_validator = HAConfigValidator(str(self.config_dir))
+        self.yaml_validator = YAMLValidator(self.config_dir)
+        self.ha_validator = HAConfigValidator(self.config_dir)
 
     def tearDown(self):
         """Clean up test fixtures."""

@@ -10,9 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ha_official_validator import HAOfficialValidator
-from reference_validator import ReferenceValidator
-from yaml_validator import YAMLValidator
+from tools.ha_official_validator import HAOfficialValidator
+from tools.reference_validator import ReferenceValidator
+from tools.yaml_validator import YAMLValidator
 
 
 @dataclass
