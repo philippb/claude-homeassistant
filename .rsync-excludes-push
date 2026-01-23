@@ -1,0 +1,43 @@
+# ===========================================
+# RSYNC EXCLUDES FOR: make push (Local → HA)
+# MORE RESTRICTIVE - Protect HA's runtime state!
+# ===========================================
+
+# Database and log files
+home-assistant_v2.db*
+*.db-shm
+*.db-wal
+*.log*
+
+# Custom add-ons and themes (managed separately)
+custom_components/
+custom_icons/
+themes/
+
+# Runtime/cache directories
+.cloud/
+deps/
+tts/
+.uuid
+__pycache__/
+
+# Large directories not needed for config management
+backups/
+image/
+tmp_backups/
+www/
+
+# Temporary files
+*.tmp
+*.temp
+
+# ===========================================
+# CRITICAL: NEVER PUSH .storage/ TO HA
+# These contain runtime state that HA manages:
+# - Integration configs (Shelly, Tuya, etc.)
+# - Entity/device registries (renames, disables)
+# - Dashboards created via UI
+# - Authentication and sessions
+# All changes should be made via HA UI or API
+# ===========================================
+.storage/

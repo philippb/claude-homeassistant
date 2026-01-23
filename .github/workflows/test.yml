@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  rsync-filter-tests:
-    name: Rsync Filter Integration Tests
+  rsync-excludes-tests:
+    name: Rsync Exclude Integration Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -26,8 +26,8 @@ jobs:
       - name: Install test dependencies
         run: pip install pytest pytest-cov
 
-      - name: Run rsync filter tests
-        run: python -m pytest tests/test_rsync_filter.py -o addopts=
+      - name: Run rsync exclude tests
+        run: python -m pytest tests/test_rsync_excludes.py -o addopts=
 
   lint:
     name: Lint

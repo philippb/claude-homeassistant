@@ -1,0 +1,46 @@
+# ===========================================
+# RSYNC EXCLUDES FOR: make pull (HA → Local)
+# Less restrictive - pull most files for reference
+# ===========================================
+
+# Database and log files (too large, not needed locally)
+home-assistant_v2.db*
+*.db-shm
+*.db-wal
+*.log*
+
+# Sensitive .storage files (never pull)
+.storage/auth/
+.storage/auth/**
+.storage/auth_cache/
+.storage/auth_cache/**
+.storage/auth_provider.homeassistant
+.storage/http.auth
+.storage/esphome.encryption_keys
+.storage/cloud
+.storage/application_credentials
+.storage/core.uuid
+
+# Custom add-ons and themes (managed separately)
+custom_components/
+custom_icons/
+themes/
+
+# Runtime/cache directories
+.cloud/
+deps/
+tts/
+__pycache__/
+
+# Large directories not needed locally
+backups/
+image/
+tmp_backups/
+www/
+
+# Miscellaneous
+.uuid
+
+# Temporary files
+*.tmp
+*.temp

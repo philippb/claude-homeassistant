@@ -43,7 +43,7 @@ help:
 # Pull configuration from Home Assistant
 pull: check-env
 	@echo "$(GREEN)Pulling configuration from Home Assistant...$(NC)"
-	@rsync -avz --delete --filter='. .rsync-filter' $(HA_HOST):$(HA_REMOTE_PATH) $(LOCAL_CONFIG_PATH)
+	@rsync -avz --delete --exclude-from=.rsync-excludes-pull $(HA_HOST):$(HA_REMOTE_PATH) $(LOCAL_CONFIG_PATH)
 	@echo "$(GREEN)Configuration pulled successfully!$(NC)"
 	@echo "$(YELLOW)Running validation to ensure integrity...$(NC)"
 	@$(MAKE) validate
@@ -53,8 +53,7 @@ push: check-env
 	@echo "$(GREEN)Validating configuration before push...$(NC)"
 	@$(MAKE) validate
 	@echo "$(GREEN)Validation passed! Pushing to Home Assistant...$(NC)"
-	@# Filter file uses 'H' (hide) rules which both exclude AND protect from --delete
-	@rsync -avz --delete --filter='. .rsync-filter' $(LOCAL_CONFIG_PATH) $(HA_HOST):$(HA_REMOTE_PATH)
+	@rsync -avz --delete --exclude-from=.rsync-excludes-push $(LOCAL_CONFIG_PATH) $(HA_HOST):$(HA_REMOTE_PATH)
 	@echo "$(GREEN)Configuration pushed successfully!$(NC)"
 	@echo "$(GREEN)Reloading Home Assistant configuration...$(NC)"
 	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reload_config.py
@@ -201,7 +200,7 @@ test-ssh:
 		echo "$(GREEN)✓ SSH connection working$(NC)" || \
 		echo "$(RED)✗ SSH connection failed$(NC)"
 
-# Rsync filter integration tests
+# Rsync exclude integration tests
 test-rsync:
-	@echo "$(GREEN)Running rsync filter integration tests...$(NC)"
-	@python3 -m pytest tests/test_rsync_filter.py
+	@echo "$(GREEN)Running rsync exclude integration tests...$(NC)"
+	@python3 -m pytest tests/test_rsync_excludes.py

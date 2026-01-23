@@ -1,9 +1,9 @@
-"""Integration tests for rsync filter rules.
+"""Integration tests for rsync exclude rules.
 
-Tests that the .rsync-filter file correctly:
-1. Excludes sensitive directories from transfer (both push and pull)
-2. Protects server-side directories from deletion during push
-3. Allows normal config files to sync
+Tests that the .rsync-excludes-* files correctly:
+1. Exclude sensitive directories from transfer (pull)
+2. Protect server-side runtime state from deletion during push
+3. Allow normal config files to sync
 """
 
 # pylint: disable=import-error,redefined-outer-name
@@ -15,7 +15,8 @@ from pathlib import Path
 
 import pytest
 
-FILTER_FILE = Path(__file__).parent.parent / ".rsync-filter"
+PULL_EXCLUDES = Path(__file__).parent.parent / ".rsync-excludes-pull"
+PUSH_EXCLUDES = Path(__file__).parent.parent / ".rsync-excludes-push"
 
 
 @pytest.fixture
@@ -68,23 +69,28 @@ def remote_dir(temp_dir):
     return remote
 
 
-def run_rsync(source, dest):
-    """Run rsync with the repo's filter file."""
+def run_rsync(source, dest, excludes):
+    """Run rsync with the provided exclude file."""
     cmd = [
         "rsync",
         "-avz",
         "--delete",
         "--checksum",
-        f"--filter=. {FILTER_FILE}",
+        f"--exclude-from={excludes}",
         f"{source}/",
         f"{dest}/",
     ]
-    return subprocess.run(cmd, capture_output=True, text=True, check=False)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise AssertionError(
+            "rsync failed:\n" f"stdout: {result.stdout}\n" f"stderr: {result.stderr}"
+        )
+    return result
 
 
 def test_push_updates_config_files(local_dir, remote_dir):
     """Push updates to configuration files."""
-    run_rsync(local_dir, remote_dir)
+    run_rsync(local_dir, remote_dir, PUSH_EXCLUDES)
 
     assert (
         remote_dir / "configuration.yaml"
@@ -100,21 +106,18 @@ def test_push_updates_config_files(local_dir, remote_dir):
     ).read_text() == "automation: NEW", "automations.yaml should have NEW content"
 
 
-def test_push_preserves_auth_tokens(local_dir, remote_dir):
-    """Push does not delete auth tokens."""
-    run_rsync(local_dir, remote_dir)
+def test_push_preserves_storage(local_dir, remote_dir):
+    """Push does not overwrite .storage contents on remote."""
+    run_rsync(local_dir, remote_dir, PUSH_EXCLUDES)
 
     assert (
-        remote_dir / ".storage" / "auth" / "tokens.json"
-    ).exists(), "Auth tokens should be preserved"
-    assert (
-        remote_dir / ".storage" / "auth" / "tokens.json"
-    ).read_text() == "SECRET_AUTH_TOKEN", "Auth token content should be unchanged"
+        remote_dir / ".storage" / "core" / "entity_registry"
+    ).read_text() == "entity_registry_v1", "Remote .storage should remain unchanged"
 
 
 def test_push_preserves_backups(local_dir, remote_dir):
     """Push preserves backups on the remote."""
-    run_rsync(local_dir, remote_dir)
+    run_rsync(local_dir, remote_dir, PUSH_EXCLUDES)
 
     assert (
         remote_dir / "backups" / "backup.tar"
@@ -123,7 +126,7 @@ def test_push_preserves_backups(local_dir, remote_dir):
 
 def test_push_preserves_www(local_dir, remote_dir):
     """Push preserves the www directory on the remote."""
-    run_rsync(local_dir, remote_dir)
+    run_rsync(local_dir, remote_dir, PUSH_EXCLUDES)
 
     assert (
         remote_dir / "www" / "index.html"
@@ -132,7 +135,7 @@ def test_push_preserves_www(local_dir, remote_dir):
 
 def test_push_preserves_custom_components(local_dir, remote_dir):
     """Push preserves custom_components on the remote."""
-    run_rsync(local_dir, remote_dir)
+    run_rsync(local_dir, remote_dir, PUSH_EXCLUDES)
 
     assert (
         remote_dir / "custom_components" / "my_comp.py"
@@ -144,11 +147,23 @@ def test_pull_excludes_auth_tokens(temp_dir, remote_dir):
     local = temp_dir / "local_pull"
     local.mkdir()
 
-    run_rsync(remote_dir, local)
+    run_rsync(remote_dir, local, PULL_EXCLUDES)
 
     assert not (
         local / ".storage" / "auth" / "tokens.json"
     ).exists(), "Auth tokens should NOT be pulled"
+
+
+def test_pull_allows_storage_core(temp_dir, remote_dir):
+    """Pull includes non-sensitive .storage files."""
+    local = temp_dir / "local_pull"
+    local.mkdir()
+
+    run_rsync(remote_dir, local, PULL_EXCLUDES)
+
+    assert (
+        local / ".storage" / "core" / "entity_registry"
+    ).read_text() == "entity_registry_v1", "Storage core should be pulled"
 
 
 def test_pull_excludes_backups(temp_dir, remote_dir):
@@ -156,7 +171,7 @@ def test_pull_excludes_backups(temp_dir, remote_dir):
     local = temp_dir / "local_pull"
     local.mkdir()
 
-    run_rsync(remote_dir, local)
+    run_rsync(remote_dir, local, PULL_EXCLUDES)
 
     assert not (
         local / "backups" / "backup.tar"
@@ -168,7 +183,7 @@ def test_pull_gets_config_files(temp_dir, remote_dir):
     local = temp_dir / "local_pull"
     local.mkdir()
 
-    run_rsync(remote_dir, local)
+    run_rsync(remote_dir, local, PULL_EXCLUDES)
 
     assert (
         local / "configuration.yaml"
@@ -182,7 +197,7 @@ def test_pull_deletes_stale_local_files(temp_dir, remote_dir):
     local.mkdir()
     (local / "stale_file.yaml").write_text("should be deleted")
 
-    run_rsync(remote_dir, local)
+    run_rsync(remote_dir, local, PULL_EXCLUDES)
 
     assert not (
         local / "stale_file.yaml"
