@@ -42,30 +42,11 @@ This project uses **two separate exclude files** for different sync operations:
 ### NEVER MODIFY LOCALLY (Runtime State)
 These files in `.storage/` are managed by Home Assistant at runtime. Local modifications will be **overwritten** by HA on restart or ignored entirely.
 
-### Making Persistent Entity/Device Changes
+### Entity/Device Changes (Manual Only)
 
-**Method 1: Home Assistant UI**
+Do not change entities or devices programmatically from this repo. If changes are
+needed, make them manually in the Home Assistant UI:
 - Settings → Devices & Services → Entities → Edit
-
-**Method 2: WebSocket API**
-```python
-import websockets
-import json
-
-async with websockets.connect('ws://HA_HOST:8123/api/websocket') as ws:
-    # Authenticate
-    await ws.recv()
-    await ws.send(json.dumps({"type": "auth", "access_token": TOKEN}))
-    await ws.recv()
-
-    # Example: Disable an entity
-    await ws.send(json.dumps({
-        "id": 1,
-        "type": "config/entity_registry/update",
-        "entity_id": "sensor.example",
-        "disabled_by": "user"
-    }))
-```
 
 ### Reloading After YAML Changes
 - Automations: `POST /api/services/automation/reload`
@@ -78,7 +59,7 @@ async with websockets.connect('ws://HA_HOST:8123/api/websocket') as ws:
 1. Run `make pull` to ensure local files are current
 2. Identify if the change affects YAML files or `.storage/` files
 3. YAML files → edit locally, then `make push`
-4. `.storage/` files → use HA UI or WebSocket API
+4. `.storage/` files → use the HA UI only (manual changes)
 
 ### Before Running `make push`
 1. Validation runs automatically - do not push if validation fails
