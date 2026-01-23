@@ -251,10 +251,11 @@ xcode-select --install  # Installs Command Line Tools including make
 
 ### Configuration Management
 ```bash
-make pull      # Pull latest config from Home Assistant
-make push      # Push local config to HA (with validation)
-make backup    # Create timestamped backup
-make validate  # Run all validation tests
+make pull        # Pull latest config from Home Assistant
+make push        # Push local config to HA (with validation)
+make backup      # Create timestamped backup
+make validate    # Run all validation tests
+make check-rsync # Test rsync permissions (detects if sudo needed)
 ```
 
 ### Entity Discovery
@@ -384,6 +385,17 @@ Then run `make setup` again. Home Assistant 2024.x requires Python 3.12+.
 2. Verify entity references: `. venv/bin/activate && python tools/reference_validator.py`
 3. Check HA logs if official validation fails
 
+### Rsync Permission Issues
+
+If `make pull` or `make push` fails with permission errors like:
+```
+rsync: [receiver] mkstemp "..." failed: Permission denied (13)
+```
+
+**Quick fix:** Run `make check-rsync` to auto-detect if sudo is needed, then add `RSYNC_SUDO=true` to your `.env` file if recommended.
+
+This is common with Home Assistant OS where configuration files are owned by root.
+
 ### SSH Connection Issues
 
 <details>
@@ -480,7 +492,29 @@ LOCAL_CONFIG_PATH=config/                # Local config directory
 BACKUP_DIR=backups                       # Backup directory
 VENV_PATH=venv                          # Python virtual environment path
 TOOLS_PATH=tools                        # Tools directory
+
+# Rsync Configuration (optional)
+RSYNC_SUDO=true                         # Enable if rsync needs sudo on HA
 ```
+
+#### Rsync Sudo Mode
+
+Some Home Assistant installations (especially **Home Assistant OS**) require elevated permissions for rsync to access configuration files. If you encounter permission errors during `make pull` or `make push`, you may need to enable sudo mode.
+
+**Auto-detect if sudo is needed:**
+```bash
+make check-rsync
+```
+
+This command tests your rsync connection and tells you whether `RSYNC_SUDO=true` is required.
+
+**When to enable RSYNC_SUDO:**
+- **Home Assistant OS**: Usually required (config files owned by root)
+- **Home Assistant Container**: Usually required (depends on container setup)
+- **Home Assistant Core**: Usually NOT required (files owned by your user)
+- **Home Assistant Supervised**: Depends on your setup
+
+**To enable:** Add `RSYNC_SUDO=true` to your `.env` file.
 
 ### Claude Code Settings
 Located in `.claude-code/settings.json`:

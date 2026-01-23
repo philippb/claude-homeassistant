@@ -14,13 +14,23 @@ BACKUP_DIR ?= backups
 VENV_PATH ?= venv
 TOOLS_PATH ?= tools
 
+# Rsync sudo configuration
+# Set RSYNC_SUDO=true in .env if rsync needs elevated permissions on Home Assistant
+# This is common with Home Assistant OS where config files are owned by root
+RSYNC_SUDO ?= false
+ifeq ($(RSYNC_SUDO),true)
+    RSYNC_PATH_OPT = --rsync-path="sudo rsync"
+else
+    RSYNC_PATH_OPT =
+endif
+
 # Colors for output
 GREEN = \033[0;32m
 YELLOW = \033[1;33m
 RED = \033[0;31m
 NC = \033[0m # No Color
 
-.PHONY: help pull push validate backup clean setup test status entities reload format-yaml check-env
+.PHONY: help pull push validate backup clean setup test status entities reload format-yaml check-env check-rsync
 
 # Default target
 help:
@@ -38,12 +48,13 @@ help:
 	@echo "  $(YELLOW)reload$(NC)   - Reload Home Assistant configuration (without pushing)"
 	@echo "  $(YELLOW)format-yaml$(NC) - Format YAML files (usage: make format-yaml [FILES='file1.yaml file2.yaml'])"
 	@echo "  $(YELLOW)check-env$(NC) - Validate environment configuration (.env file)"
+	@echo "  $(YELLOW)check-rsync$(NC) - Test rsync permissions and detect if sudo is needed"
 	@echo "  $(YELLOW)clean$(NC)    - Clean up temporary files and caches"
 
 # Pull configuration from Home Assistant
 pull: check-env
 	@echo "$(GREEN)Pulling configuration from Home Assistant...$(NC)"
-	@rsync -avz --delete --exclude-from=.rsync-excludes $(HA_HOST):$(HA_REMOTE_PATH) $(LOCAL_CONFIG_PATH)
+	@rsync -avz --delete --exclude-from=.rsync-excludes $(RSYNC_PATH_OPT) $(HA_HOST):$(HA_REMOTE_PATH) $(LOCAL_CONFIG_PATH)
 	@echo "$(GREEN)Configuration pulled successfully!$(NC)"
 	@echo "$(YELLOW)Running validation to ensure integrity...$(NC)"
 	@$(MAKE) validate
@@ -53,7 +64,7 @@ push: check-env
 	@echo "$(GREEN)Validating configuration before push...$(NC)"
 	@$(MAKE) validate
 	@echo "$(GREEN)Validation passed! Pushing to Home Assistant...$(NC)"
-	@rsync -avz --delete --exclude-from=.rsync-excludes $(LOCAL_CONFIG_PATH) $(HA_HOST):$(HA_REMOTE_PATH)
+	@rsync -avz --delete --exclude-from=.rsync-excludes $(RSYNC_PATH_OPT) $(LOCAL_CONFIG_PATH) $(HA_HOST):$(HA_REMOTE_PATH)
 	@echo "$(GREEN)Configuration pushed successfully!$(NC)"
 	@echo "$(GREEN)Reloading Home Assistant configuration...$(NC)"
 	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reload_config.py
@@ -181,7 +192,7 @@ check-env:
 
 # Pull only storage files (for development)
 pull-storage:
-	@rsync -avz $(HA_HOST):$(HA_REMOTE_PATH).storage/ $(LOCAL_CONFIG_PATH).storage/
+	@rsync -avz $(RSYNC_PATH_OPT) $(HA_HOST):$(HA_REMOTE_PATH).storage/ $(LOCAL_CONFIG_PATH).storage/
 
 # Individual validation targets
 validate-yaml: check-setup
@@ -199,3 +210,56 @@ test-ssh:
 	@ssh -o ConnectTimeout=10 $(HA_HOST) "echo 'Connection successful'" && \
 		echo "$(GREEN)✓ SSH connection working$(NC)" || \
 		echo "$(RED)✗ SSH connection failed$(NC)"
+
+# Test rsync permissions and auto-detect if sudo is needed
+check-rsync: check-env
+	@echo "$(GREEN)Testing rsync permissions to Home Assistant...$(NC)"
+	@echo ""
+	@# First test basic SSH
+	@if ! ssh -o ConnectTimeout=10 $(HA_HOST) "echo 'SSH OK'" > /dev/null 2>&1; then \
+		echo "$(RED)✗ SSH connection failed. Please fix SSH access first.$(NC)"; \
+		echo "  Run 'make test-ssh' for more details."; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)✓ SSH connection working$(NC)"
+	@echo ""
+	@# Test rsync without sudo
+	@echo "Testing rsync access to $(HA_REMOTE_PATH)..."
+	@if rsync -avz --dry-run $(HA_HOST):$(HA_REMOTE_PATH)configuration.yaml /tmp/ > /dev/null 2>&1; then \
+		echo "$(GREEN)✓ Rsync works without sudo$(NC)"; \
+		echo ""; \
+		echo "Your current setting: RSYNC_SUDO=$(RSYNC_SUDO)"; \
+		if [ "$(RSYNC_SUDO)" = "true" ]; then \
+			echo "$(YELLOW)Note: RSYNC_SUDO is enabled but not required. You can remove it from .env if desired.$(NC)"; \
+		else \
+			echo "$(GREEN)No changes needed - your configuration is correct!$(NC)"; \
+		fi; \
+	else \
+		echo "$(YELLOW)⚠ Rsync without sudo failed. Testing with sudo...$(NC)"; \
+		if rsync -avz --dry-run --rsync-path="sudo rsync" $(HA_HOST):$(HA_REMOTE_PATH)configuration.yaml /tmp/ > /dev/null 2>&1; then \
+			echo "$(GREEN)✓ Rsync works WITH sudo$(NC)"; \
+			echo ""; \
+			if [ "$(RSYNC_SUDO)" = "true" ]; then \
+				echo "$(GREEN)Your configuration is correct! RSYNC_SUDO=true is properly set.$(NC)"; \
+			else \
+				echo "$(RED)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"; \
+				echo "$(YELLOW)ACTION REQUIRED: Add RSYNC_SUDO=true to your .env file$(NC)"; \
+				echo "$(RED)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"; \
+				echo ""; \
+				echo "Run this command to fix it:"; \
+				echo "  echo 'RSYNC_SUDO=true' >> .env"; \
+				echo ""; \
+				echo "This is common with Home Assistant OS where config files are owned by root."; \
+			fi; \
+		else \
+			echo "$(RED)✗ Rsync failed both with and without sudo$(NC)"; \
+			echo ""; \
+			echo "Possible causes:"; \
+			echo "  1. The remote path $(HA_REMOTE_PATH) doesn't exist"; \
+			echo "  2. SSH user doesn't have permission and sudo isn't configured"; \
+			echo "  3. rsync is not installed on Home Assistant"; \
+			echo ""; \
+			echo "For Home Assistant OS, ensure the Advanced SSH & Web Terminal add-on"; \
+			echo "is properly configured with your SSH key."; \
+		fi; \
+	fi
