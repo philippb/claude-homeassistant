@@ -23,8 +23,11 @@ jobs:
       - name: Verify rsync is available
         run: rsync --version
 
+      - name: Install test dependencies
+        run: pip install pytest
+
       - name: Run rsync filter tests
-        run: python tools/test_rsync_filter.py
+        run: python -m pytest tests/test_rsync_filter.py
 
   lint:
     name: Lint

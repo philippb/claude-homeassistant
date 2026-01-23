@@ -204,4 +204,4 @@ test-ssh:
 # Rsync filter integration tests
 test-rsync:
 	@echo "$(GREEN)Running rsync filter integration tests...$(NC)"
-	@python3 $(TOOLS_PATH)/test_rsync_filter.py
+	@python3 -m pytest tests/test_rsync_filter.py

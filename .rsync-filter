@@ -25,6 +25,20 @@ P .storage/auth/
 - .storage/auth_cache/
 P .storage/auth_cache/**
 P .storage/auth_cache/
+#
+# Additional sensitive .storage files (exclude + protect)
+- .storage/auth_provider.homeassistant
+P .storage/auth_provider.homeassistant
+- .storage/http.auth
+P .storage/http.auth
+- .storage/esphome.encryption_keys
+P .storage/esphome.encryption_keys
+- .storage/cloud
+P .storage/cloud
+- .storage/application_credentials
+P .storage/application_credentials
+- .storage/core.uuid
+P .storage/core.uuid
 
 # Protect entire .storage from accidental deletion
 # (contains entity registry, device registry, etc.)
