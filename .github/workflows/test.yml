@@ -24,7 +24,7 @@ jobs:
         run: rsync --version
 
       - name: Install test dependencies
-        run: pip install pytest
+        run: pip install pytest pytest-cov
 
       - name: Run rsync filter tests
         run: python -m pytest tests/test_rsync_filter.py
