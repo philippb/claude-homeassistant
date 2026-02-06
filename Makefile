@@ -6,6 +6,9 @@ ifneq (,$(wildcard ./.env))
     export
 endif
 
+# Ensure Homebrew binaries are in PATH (for rsync, etc.)
+export PATH := /opt/homebrew/bin:$(PATH)
+
 # Configuration
 HA_HOST ?= your_homeassistant_host
 HA_REMOTE_PATH ?= /config/
@@ -174,6 +177,22 @@ check-env:
 	fi
 	@if [ ! -f ".env" ]; then \
 		echo "$(YELLOW)Warning: .env file not found. Copy .env.example to .env and configure your settings.$(NC)"; \
+	fi
+	@if ! command -v rsync >/dev/null 2>&1; then \
+		echo "$(RED)Error: rsync not found in PATH.$(NC)"; \
+		echo "$(YELLOW)Install via Homebrew: brew install rsync$(NC)"; \
+		echo "$(YELLOW)If already installed at /opt/homebrew/bin/rsync, add to .env:$(NC)"; \
+		echo "$(YELLOW)  PATH=/opt/homebrew/bin:\$$(PATH)$(NC)"; \
+		exit 1; \
+	fi
+	@if ! ssh -o ConnectTimeout=5 $(HA_HOST) "command -v rsync" >/dev/null 2>&1; then \
+		echo "$(RED)Error: rsync not found on Home Assistant ($(HA_HOST)).$(NC)"; \
+		echo "$(YELLOW)For Home Assistant OS, install the 'Advanced SSH & Web Terminal' addon$(NC)"; \
+		echo "$(YELLOW)and add rsync to the packages list in the addon configuration:$(NC)"; \
+		echo "$(YELLOW)  packages:$(NC)"; \
+		echo "$(YELLOW)    - rsync$(NC)"; \
+		echo "$(YELLOW)Then restart the addon.$(NC)"; \
+		exit 1; \
 	fi
 
 # Development targets (not shown in help)

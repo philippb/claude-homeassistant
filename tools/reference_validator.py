@@ -90,6 +90,19 @@ class ReferenceValidator:
     # Special keywords that are not entity IDs
     SPECIAL_KEYWORDS = {"all", "none"}
 
+    # Built-in entities that always exist but aren't in the entity registry
+    # zone.home is a special, pre-defined, non-deletable zone
+    # See: https://www.home-assistant.io/integrations/zone/
+    BUILTIN_ENTITIES = {
+        "sun.sun",
+        "zone.home",
+    }
+
+    # No domain-wide skips - we validate all entity references
+    # persistent_notification uses notification_id with services/triggers,
+    # not entity IDs. See: https://www.home-assistant.io/integrations/persistent_notification/
+    BUILTIN_DOMAINS: set = set()
+
     def __init__(self, config_dir: str = "config"):
         """Initialize the ReferenceValidator."""
         self.config_dir = Path(config_dir)
@@ -164,6 +177,260 @@ class ReferenceValidator:
                 return {}
 
         return self._areas
+
+    def get_config_defined_entities(self) -> Set[str]:
+        """Extract entities that are defined in config files (not in entity registry)."""
+        entities: Set[str] = set()
+
+        # Add built-in entities
+        entities.update(self.BUILTIN_ENTITIES)
+
+        # Extract from groups.yaml
+        entities.update(self._extract_groups())
+
+        # Extract from configuration.yaml (templates, input helpers, etc.)
+        entities.update(self._extract_from_configuration())
+
+        # Extract automation/script/scene entities from their config files
+        entities.update(self._extract_automation_entities())
+        entities.update(self._extract_script_entities())
+        entities.update(self._extract_scene_entities())
+
+        # Extract zone entities from configuration and storage
+        entities.update(self._extract_zone_entities())
+
+        return entities
+
+    def _extract_groups(self) -> Set[str]:
+        """Extract group entities from groups.yaml."""
+        entities: Set[str] = set()
+        groups_file = self.config_dir / "groups.yaml"
+
+        if groups_file.exists():
+            try:
+                with open(groups_file, "r", encoding="utf-8") as f:
+                    data = yaml.load(f, Loader=HAYamlLoader)
+                    if isinstance(data, dict):
+                        for group_name in data.keys():
+                            entities.add(f"group.{group_name}")
+            except Exception:
+                pass  # Ignore errors, will be caught by YAML validator
+
+        return entities
+
+    def _extract_from_configuration(self) -> Set[str]:
+        """Extract entities defined in configuration.yaml."""
+        entities: Set[str] = set()
+        config_file = self.config_dir / "configuration.yaml"
+
+        if not config_file.exists():
+            return entities
+
+        try:
+            with open(config_file, "r", encoding="utf-8") as f:
+                data = yaml.load(f, Loader=HAYamlLoader)
+
+            if not isinstance(data, dict):
+                return entities
+
+            # Extract groups
+            if "group" in data and isinstance(data["group"], dict):
+                for group_name in data["group"].keys():
+                    entities.add(f"group.{group_name}")
+
+            # Extract input helpers
+            for input_type in ["input_boolean", "input_number", "input_text",
+                               "input_select", "input_datetime", "input_button"]:
+                if input_type in data and isinstance(data[input_type], dict):
+                    for name in data[input_type].keys():
+                        entities.add(f"{input_type}.{name}")
+
+            # Extract template entities
+            if "template" in data:
+                template_data = data["template"]
+                if isinstance(template_data, list):
+                    for item in template_data:
+                        entities.update(self._extract_template_entities(item))
+                elif isinstance(template_data, dict):
+                    entities.update(self._extract_template_entities(template_data))
+
+            # Extract sensors/binary_sensors defined directly
+            for sensor_type in ["sensor", "binary_sensor"]:
+                if sensor_type in data:
+                    sensor_data = data[sensor_type]
+                    if isinstance(sensor_data, list):
+                        for item in sensor_data:
+                            if isinstance(item, dict):
+                                # Platform-based sensors
+                                if "platform" in item and item["platform"] == "template":
+                                    sensors = item.get("sensors", {})
+                                    for name in sensors.keys():
+                                        entities.add(f"{sensor_type}.{name}")
+
+        except Exception:
+            pass  # Ignore errors
+
+        return entities
+
+    def _extract_template_entities(self, template_config: Any) -> Set[str]:
+        """Extract entity names from template configuration.
+
+        Per HA docs: default_entity_id controls automatic entity_id generation.
+        unique_id exists to allow changing entity_id in the UI - it's NOT the entity_id.
+        See: https://www.home-assistant.io/integrations/template/
+        """
+        entities: Set[str] = set()
+
+        if not isinstance(template_config, dict):
+            return entities
+
+        # Template sensors, binary_sensors, etc.
+        for entity_type in ["sensor", "binary_sensor", "number", "select", "button"]:
+            if entity_type in template_config:
+                type_data = template_config[entity_type]
+                if isinstance(type_data, list):
+                    for item in type_data:
+                        if isinstance(item, dict):
+                            # Use default_entity_id if present, else derive from name
+                            # Do NOT use unique_id - it's for UI customization only
+                            default_entity_id = item.get("default_entity_id")
+                            name = item.get("name", "")
+                            if default_entity_id:
+                                entities.add(f"{entity_type}.{default_entity_id}")
+                            elif name:
+                                # Convert name to entity_id format
+                                entity_name = name.lower().replace(" ", "_")
+                                entities.add(f"{entity_type}.{entity_name}")
+
+        return entities
+
+    def _extract_automation_entities(self) -> Set[str]:
+        """Extract automation entities from automations.yaml.
+
+        Per HA docs: The 'id' field is a unique identifier that allows changing
+        the name and entity_id in the UI - it is NOT the entity_id itself.
+        Entity_id is generated from the entity name (alias).
+        Registry should be source of truth; alias-slug is a fallback heuristic.
+        See: https://www.home-assistant.io/docs/automation/yaml/
+        """
+        entities: Set[str] = set()
+        automations_file = self.config_dir / "automations.yaml"
+
+        if automations_file.exists():
+            try:
+                with open(automations_file, "r", encoding="utf-8") as f:
+                    data = yaml.load(f, Loader=HAYamlLoader)
+                    if isinstance(data, list):
+                        for automation in data:
+                            if isinstance(automation, dict):
+                                # Derive entity_id from alias (friendly name)
+                                # Do NOT use 'id' field - it's for UI customization only
+                                alias = automation.get("alias", "")
+                                if alias:
+                                    # Convert alias to entity_id format
+                                    entity_name = alias.lower().replace(" ", "_").replace("-", "_")
+                                    # Remove special characters
+                                    entity_name = re.sub(r"[^a-z0-9_]", "", entity_name)
+                                    entities.add(f"automation.{entity_name}")
+            except Exception:
+                pass
+
+        return entities
+
+    def _extract_script_entities(self) -> Set[str]:
+        """Extract script entities from scripts.yaml."""
+        entities: Set[str] = set()
+        scripts_file = self.config_dir / "scripts.yaml"
+
+        if scripts_file.exists():
+            try:
+                with open(scripts_file, "r", encoding="utf-8") as f:
+                    data = yaml.load(f, Loader=HAYamlLoader)
+                    if isinstance(data, dict):
+                        for script_name in data.keys():
+                            entities.add(f"script.{script_name}")
+            except Exception:
+                pass
+
+        return entities
+
+    def _extract_scene_entities(self) -> Set[str]:
+        """Extract scene entities from scenes.yaml."""
+        entities: Set[str] = set()
+        scenes_file = self.config_dir / "scenes.yaml"
+
+        if scenes_file.exists():
+            try:
+                with open(scenes_file, "r", encoding="utf-8") as f:
+                    data = yaml.load(f, Loader=HAYamlLoader)
+                    if isinstance(data, list):
+                        for scene in data:
+                            if isinstance(scene, dict):
+                                scene_id = scene.get("id")
+                                name = scene.get("name", "")
+                                if scene_id:
+                                    entities.add(f"scene.{scene_id}")
+                                if name:
+                                    entity_name = name.lower().replace(" ", "_")
+                                    entities.add(f"scene.{entity_name}")
+            except Exception:
+                pass
+
+        return entities
+
+    def _extract_zone_entities(self) -> Set[str]:
+        """Extract zone entities from configuration and storage.
+
+        Zones can be defined in:
+        1. configuration.yaml under 'zone:' key
+        2. .storage/core.zone file (UI-configured zones)
+
+        zone.home is a built-in that's always present and handled separately.
+        See: https://www.home-assistant.io/integrations/zone/
+        """
+        entities: Set[str] = set()
+
+        # Extract from configuration.yaml
+        config_file = self.config_dir / "configuration.yaml"
+        if config_file.exists():
+            try:
+                with open(config_file, "r", encoding="utf-8") as f:
+                    data = yaml.load(f, Loader=HAYamlLoader)
+                    if isinstance(data, dict) and "zone" in data:
+                        zone_data = data["zone"]
+                        if isinstance(zone_data, list):
+                            for zone in zone_data:
+                                if isinstance(zone, dict):
+                                    name = zone.get("name", "")
+                                    if name:
+                                        # Convert name to entity_id format
+                                        entity_name = name.lower().replace(" ", "_")
+                                        entities.add(f"zone.{entity_name}")
+            except Exception:
+                pass
+
+        # Extract from storage (UI-configured zones)
+        zone_storage = self.storage_dir / "core.zone"
+        if zone_storage.exists():
+            try:
+                with open(zone_storage, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    items = data.get("data", {}).get("items", [])
+                    for item in items:
+                        if isinstance(item, dict):
+                            name = item.get("name", "")
+                            if name:
+                                entity_name = name.lower().replace(" ", "_")
+                                entities.add(f"zone.{entity_name}")
+            except Exception:
+                pass
+
+        return entities
+
+    def is_builtin_domain(self, entity_id: str) -> bool:
+        """Check if entity belongs to a built-in domain."""
+        domain = entity_id.split(".")[0] if "." in entity_id else ""
+        return domain in self.BUILTIN_DOMAINS
 
     def is_uuid_format(self, value: str) -> bool:
         """Check if a string matches UUID format (32 hex characters)."""
@@ -367,6 +634,12 @@ class ReferenceValidator:
         areas = self.load_area_registry()
         entity_id_mapping = self.get_entity_registry_id_mapping()
 
+        # Get config-defined entities (groups, templates, input helpers, etc.)
+        config_entities = self.get_config_defined_entities()
+
+        # Domains that are provided by integrations and may not be in local registry
+        integration_domains = {"calendar", "weather", "tts", "conversation"}
+
         all_valid = True
 
         # Validate entity references (normal entity_id format)
@@ -375,21 +648,35 @@ class ReferenceValidator:
             if self.is_uuid_format(entity_id):
                 continue
 
-            if entity_id not in entities:
-                # Check if it's a disabled entity
-                disabled_entities = {
-                    e["entity_id"]: e
-                    for e in entities.values()
-                    if e.get("disabled_by") is not None
-                }
+            # Check if entity exists in registry, config, or is a built-in
+            if entity_id in entities:
+                continue  # Found in entity registry
 
-                if entity_id in disabled_entities:
-                    self.warnings.append(
-                        f"{file_path}: References disabled entity " f"'{entity_id}'"
-                    )
-                else:
-                    self.errors.append(f"{file_path}: Unknown entity '{entity_id}'")
-                    all_valid = False
+            if entity_id in config_entities:
+                continue  # Found in config-defined entities
+
+            if self.is_builtin_domain(entity_id):
+                continue  # Built-in domain (zone.*, persistent_notification.*)
+
+            # Check if it's an integration-provided domain
+            domain = entity_id.split(".")[0] if "." in entity_id else ""
+            if domain in integration_domains:
+                continue  # Integration-provided entity, trust it exists
+
+            # Check if it's a disabled entity
+            disabled_entities = {
+                e["entity_id"]: e
+                for e in entities.values()
+                if e.get("disabled_by") is not None
+            }
+
+            if entity_id in disabled_entities:
+                self.warnings.append(
+                    f"{file_path}: References disabled entity " f"'{entity_id}'"
+                )
+            else:
+                self.errors.append(f"{file_path}: Unknown entity '{entity_id}'")
+                all_valid = False
 
         # Validate entity registry ID references (UUID format)
         for registry_id in entity_registry_ids:
