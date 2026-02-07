@@ -17,11 +17,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-# Add tools directory to path for imports
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
-
-from reference_validator import ReferenceValidator  # noqa: E402
+from tools.reference_validator import ReferenceValidator
 
 
 @pytest.fixture
@@ -55,7 +51,7 @@ class TestTemplateEntityDerivation:
     """Tests for template entity ID derivation."""
 
     def test_unique_id_not_used_for_entity_derivation(self, temp_config_dir):
-        """unique_id should NOT be used to derive entity_id."""
+        """Does not use unique_id to derive entity_id."""
         config = {
             "template": [
                 {
@@ -79,7 +75,7 @@ class TestTemplateEntityDerivation:
         assert "sensor.my_unique_sensor_id" not in entities
 
     def test_default_entity_id_used_when_present(self, temp_config_dir):
-        """default_entity_id should be used when present."""
+        """Uses default_entity_id when present."""
         config = {
             "template": [
                 {
@@ -169,11 +165,90 @@ class TestAutomationEntityDerivation:
         assert "automation.my_complex_automation_name" in entities
 
 
+class TestSceneEntityDerivation:
+    """Tests for scene entity ID derivation."""
+
+    def test_scene_id_not_used_as_entity_id(self, temp_config_dir):
+        """Scene 'id' field should NOT be used as entity_id."""
+        scenes = [
+            {
+                "id": "1234567890",
+                "name": "Movie Time!",
+                "entities": {},
+            }
+        ]
+        (temp_config_dir / "scenes.yaml").write_text(yaml.dump(scenes))
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        entities = validator.get_config_defined_entities()
+
+        assert "scene.1234567890" not in entities
+        assert "scene.movie_time" in entities
+
+
+class TestNoIntegrationDomainSkip:
+    """Tests that integration domains are not blindly accepted."""
+
+    def test_unknown_weather_entity_produces_error(self, temp_config_dir):
+        """Unknown weather.* should produce validation errors."""
+        config = {
+            "automation": [
+                {
+                    "trigger": {
+                        "platform": "state",
+                        "entity_id": "weather.fake_weather",
+                    },
+                    "action": [],
+                }
+            ]
+        }
+        (temp_config_dir / "test_config.yaml").write_text(yaml.dump(config))
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        validator.validate_file_references(temp_config_dir / "test_config.yaml")
+
+        error_messages = " ".join(validator.errors)
+        assert "weather.fake_weather" in error_messages
+
+
+class TestRestoreStateFallback:
+    """Tests for restore state fallback behavior."""
+
+    def test_entity_in_restore_state_is_accepted(self, temp_config_dir):
+        """Accepts entity IDs found in restore state when not in registry."""
+        restore_payload = {"data": [{"state": {"entity_id": "sensor.restored_entity"}}]}
+        (temp_config_dir / ".storage" / "core.restore_state").write_text(
+            json.dumps(restore_payload)
+        )
+
+        config = {
+            "automation": [
+                {
+                    "trigger": {
+                        "platform": "state",
+                        "entity_id": "sensor.restored_entity",
+                    },
+                    "action": [],
+                }
+            ]
+        }
+        (temp_config_dir / "test_config.yaml").write_text(yaml.dump(config))
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        assert validator.validate_file_references(temp_config_dir / "test_config.yaml")
+
+        error_messages = " ".join(validator.errors)
+        assert "sensor.restored_entity" not in error_messages
+
+        warning_messages = " ".join(validator.warnings)
+        assert "sensor.restored_entity" in warning_messages
+
+
 class TestZoneValidation:
     """Tests for zone entity validation."""
 
     def test_zone_home_is_builtin(self, temp_config_dir):
-        """zone.home should be recognized as a built-in."""
+        """Recognizes zone.home as a built-in."""
         validator = ReferenceValidator(str(temp_config_dir))
         entities = validator.get_config_defined_entities()
 
@@ -204,7 +279,7 @@ class TestZoneValidation:
         assert "zone.nonexistent_zone" in error_messages
 
     def test_zone_not_in_builtin_domains(self, temp_config_dir):
-        """zone should NOT be in BUILTIN_DOMAINS (would skip validation)."""
+        """Does not treat zone as a built-in domain."""
         validator = ReferenceValidator(str(temp_config_dir))
 
         assert "zone" not in validator.BUILTIN_DOMAINS
@@ -228,9 +303,7 @@ class TestZoneValidation:
         """Zones defined in storage (UI) should be recognized."""
         zone_storage = {
             "data": {
-                "items": [
-                    {"name": "Office", "latitude": 40.0, "longitude": -74.0}
-                ]
+                "items": [{"name": "Office", "latitude": 40.0, "longitude": -74.0}]
             }
         }
         (temp_config_dir / ".storage" / "core.zone").write_text(
@@ -247,7 +320,7 @@ class TestPersistentNotificationValidation:
     """Tests for persistent_notification entity validation."""
 
     def test_persistent_notification_not_in_builtin_domains(self, temp_config_dir):
-        """persistent_notification should NOT be in BUILTIN_DOMAINS."""
+        """Does not treat persistent_notification as a built-in domain."""
         validator = ReferenceValidator(str(temp_config_dir))
 
         assert "persistent_notification" not in validator.BUILTIN_DOMAINS
@@ -280,14 +353,14 @@ class TestBuiltinEntities:
     """Tests for built-in entity handling."""
 
     def test_sun_sun_is_builtin(self, temp_config_dir):
-        """sun.sun should be recognized as built-in."""
+        """Recognizes sun.sun as built-in."""
         validator = ReferenceValidator(str(temp_config_dir))
         entities = validator.get_config_defined_entities()
 
         assert "sun.sun" in entities
 
     def test_zone_home_is_builtin(self, temp_config_dir):
-        """zone.home should be recognized as built-in."""
+        """Recognizes zone.home as built-in."""
         validator = ReferenceValidator(str(temp_config_dir))
         entities = validator.get_config_defined_entities()
 

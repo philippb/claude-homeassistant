@@ -84,11 +84,14 @@ HAYamlLoader.add_constructor("!input", input_constructor)
 HAYamlLoader.add_constructor("!secret", secret_constructor)
 
 
+# pylint: disable=too-many-instance-attributes
 class ReferenceValidator:
     """Validates entity and device references in Home Assistant config."""
 
     # Special keywords that are not entity IDs
     SPECIAL_KEYWORDS = {"all", "none"}
+
+    _OBJECT_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
     # Built-in entities that always exist but aren't in the entity registry
     # zone.home is a special, pre-defined, non-deletable zone
@@ -100,7 +103,7 @@ class ReferenceValidator:
 
     # No domain-wide skips - we validate all entity references
     # persistent_notification uses notification_id with services/triggers,
-    # not entity IDs. See: https://www.home-assistant.io/integrations/persistent_notification/
+    # not entity IDs. See: home-assistant.io/integrations/persistent_notification/
     BUILTIN_DOMAINS: set = set()
 
     def __init__(self, config_dir: str = "config"):
@@ -114,6 +117,7 @@ class ReferenceValidator:
         self._entities: Optional[Dict[str, Any]] = None
         self._devices: Optional[Dict[str, Any]] = None
         self._areas: Optional[Dict[str, Any]] = None
+        self._restore_entities: Optional[Set[str]] = None
 
     def load_entity_registry(self) -> Dict[str, Any]:
         """Load and cache entity registry."""
@@ -178,8 +182,75 @@ class ReferenceValidator:
 
         return self._areas
 
+    def load_restore_state_entities(self) -> Set[str]:
+        """Load and cache entity_ids found in restore state storage.
+
+        The entity registry is not guaranteed to include every entity. Restore
+        state is a pragmatic fallback for entities that exist at runtime but do
+        not have an entry in the registry.
+        """
+        if self._restore_entities is None:
+            restore_file = self.storage_dir / "core.restore_state"
+            if not restore_file.exists():
+                self._restore_entities = set()
+                return self._restore_entities
+
+            try:
+                with open(restore_file, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+            except Exception as e:
+                self.warnings.append(f"Failed to load restore state: {e}")
+                self._restore_entities = set()
+                return self._restore_entities
+
+            items = payload.get("data", [])
+            entities: Set[str] = set()
+            if isinstance(items, list):
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    state = item.get("state")
+                    if not isinstance(state, dict):
+                        continue
+                    entity_id = state.get("entity_id")
+                    if isinstance(entity_id, str) and self._is_valid_entity_id(
+                        entity_id
+                    ):
+                        entities.add(entity_id)
+
+            self._restore_entities = entities
+
+        return self._restore_entities
+
+    @classmethod
+    def _slugify_object_id(cls, value: str) -> str:
+        """Best-effort HA-like slugify for deriving object_ids from names.
+
+        Note: we intentionally do not "fix" user-provided object_ids (keys like
+        input_boolean.foo). This helper is only used for name/alias-derived IDs.
+        """
+        slug = value.strip().lower()
+        slug = re.sub(r"[^a-z0-9_]+", "_", slug)
+        slug = re.sub(r"_+", "_", slug)
+        return slug.strip("_")
+
+    @classmethod
+    def _is_valid_object_id(cls, value: str) -> bool:
+        return bool(cls._OBJECT_ID_RE.fullmatch(value))
+
+    @classmethod
+    def _is_valid_entity_id(cls, value: str) -> bool:
+        if "." not in value:
+            return False
+        domain, object_id = value.split(".", 1)
+        return (
+            bool(domain)
+            and cls._is_valid_object_id(domain)
+            and cls._is_valid_object_id(object_id)
+        )
+
     def get_config_defined_entities(self) -> Set[str]:
-        """Extract entities that are defined in config files (not in entity registry)."""
+        """Extract entities defined in config files (not in entity registry)."""
         entities: Set[str] = set()
 
         # Add built-in entities
@@ -239,8 +310,14 @@ class ReferenceValidator:
                     entities.add(f"group.{group_name}")
 
             # Extract input helpers
-            for input_type in ["input_boolean", "input_number", "input_text",
-                               "input_select", "input_datetime", "input_button"]:
+            for input_type in [
+                "input_boolean",
+                "input_number",
+                "input_text",
+                "input_select",
+                "input_datetime",
+                "input_button",
+            ]:
                 if input_type in data and isinstance(data[input_type], dict):
                     for name in data[input_type].keys():
                         entities.add(f"{input_type}.{name}")
@@ -262,7 +339,10 @@ class ReferenceValidator:
                         for item in sensor_data:
                             if isinstance(item, dict):
                                 # Platform-based sensors
-                                if "platform" in item and item["platform"] == "template":
+                                if (
+                                    "platform" in item
+                                    and item["platform"] == "template"
+                                ):
                                     sensors = item.get("sensors", {})
                                     for name in sensors.keys():
                                         entities.add(f"{sensor_type}.{name}")
@@ -296,11 +376,22 @@ class ReferenceValidator:
                             default_entity_id = item.get("default_entity_id")
                             name = item.get("name", "")
                             if default_entity_id:
-                                entities.add(f"{entity_type}.{default_entity_id}")
+                                default_entity_id = str(default_entity_id)
+                                if "." in default_entity_id:
+                                    # Some configs may provide full entity_id.
+                                    # Only accept if well-formed.
+                                    if self._is_valid_entity_id(default_entity_id):
+                                        entities.add(default_entity_id)
+                                else:
+                                    # Only accept valid user-provided object_ids.
+                                    if self._is_valid_object_id(default_entity_id):
+                                        entities.add(
+                                            f"{entity_type}.{default_entity_id}"
+                                        )
                             elif name:
-                                # Convert name to entity_id format
-                                entity_name = name.lower().replace(" ", "_")
-                                entities.add(f"{entity_type}.{entity_name}")
+                                object_id = self._slugify_object_id(str(name))
+                                if object_id:
+                                    entities.add(f"{entity_type}.{object_id}")
 
         return entities
 
@@ -327,11 +418,9 @@ class ReferenceValidator:
                                 # Do NOT use 'id' field - it's for UI customization only
                                 alias = automation.get("alias", "")
                                 if alias:
-                                    # Convert alias to entity_id format
-                                    entity_name = alias.lower().replace(" ", "_").replace("-", "_")
-                                    # Remove special characters
-                                    entity_name = re.sub(r"[^a-z0-9_]", "", entity_name)
-                                    entities.add(f"automation.{entity_name}")
+                                    object_id = self._slugify_object_id(str(alias))
+                                    if object_id:
+                                        entities.add(f"automation.{object_id}")
             except Exception:
                 pass
 
@@ -355,7 +444,12 @@ class ReferenceValidator:
         return entities
 
     def _extract_scene_entities(self) -> Set[str]:
-        """Extract scene entities from scenes.yaml."""
+        """Extract scene entities from scenes.yaml.
+
+        Similar to automations, the `id` field in UI-managed scenes is a unique
+        identifier and not the entity_id. We derive the entity_id from the
+        friendly name as a fallback heuristic.
+        """
         entities: Set[str] = set()
         scenes_file = self.config_dir / "scenes.yaml"
 
@@ -366,13 +460,11 @@ class ReferenceValidator:
                     if isinstance(data, list):
                         for scene in data:
                             if isinstance(scene, dict):
-                                scene_id = scene.get("id")
                                 name = scene.get("name", "")
-                                if scene_id:
-                                    entities.add(f"scene.{scene_id}")
                                 if name:
-                                    entity_name = name.lower().replace(" ", "_")
-                                    entities.add(f"scene.{entity_name}")
+                                    object_id = self._slugify_object_id(str(name))
+                                    if object_id:
+                                        entities.add(f"scene.{object_id}")
             except Exception:
                 pass
 
@@ -403,9 +495,9 @@ class ReferenceValidator:
                                 if isinstance(zone, dict):
                                     name = zone.get("name", "")
                                     if name:
-                                        # Convert name to entity_id format
-                                        entity_name = name.lower().replace(" ", "_")
-                                        entities.add(f"zone.{entity_name}")
+                                        object_id = self._slugify_object_id(str(name))
+                                        if object_id:
+                                            entities.add(f"zone.{object_id}")
             except Exception:
                 pass
 
@@ -420,8 +512,9 @@ class ReferenceValidator:
                         if isinstance(item, dict):
                             name = item.get("name", "")
                             if name:
-                                entity_name = name.lower().replace(" ", "_")
-                                entities.add(f"zone.{entity_name}")
+                                object_id = self._slugify_object_id(str(name))
+                                if object_id:
+                                    entities.add(f"zone.{object_id}")
             except Exception:
                 pass
 
@@ -636,9 +729,7 @@ class ReferenceValidator:
 
         # Get config-defined entities (groups, templates, input helpers, etc.)
         config_entities = self.get_config_defined_entities()
-
-        # Domains that are provided by integrations and may not be in local registry
-        integration_domains = {"calendar", "weather", "tts", "conversation"}
+        restore_entities = self.load_restore_state_entities()
 
         all_valid = True
 
@@ -650,6 +741,11 @@ class ReferenceValidator:
 
             # Check if entity exists in registry, config, or is a built-in
             if entity_id in entities:
+                # Surface disabled entities without failing validation.
+                if entities[entity_id].get("disabled_by") is not None:
+                    self.warnings.append(
+                        f"{file_path}: References disabled entity '{entity_id}'"
+                    )
                 continue  # Found in entity registry
 
             if entity_id in config_entities:
@@ -658,25 +754,17 @@ class ReferenceValidator:
             if self.is_builtin_domain(entity_id):
                 continue  # Built-in domain (zone.*, persistent_notification.*)
 
-            # Check if it's an integration-provided domain
-            domain = entity_id.split(".")[0] if "." in entity_id else ""
-            if domain in integration_domains:
-                continue  # Integration-provided entity, trust it exists
-
-            # Check if it's a disabled entity
-            disabled_entities = {
-                e["entity_id"]: e
-                for e in entities.values()
-                if e.get("disabled_by") is not None
-            }
-
-            if entity_id in disabled_entities:
+            if entity_id in restore_entities:
+                # Restore state is a best-effort fallback for entities not present in
+                # the entity registry (e.g., entities without unique_id support).
                 self.warnings.append(
-                    f"{file_path}: References disabled entity " f"'{entity_id}'"
+                    f"{file_path}: Entity '{entity_id}' not in registry "
+                    "but found in restore state"
                 )
-            else:
-                self.errors.append(f"{file_path}: Unknown entity '{entity_id}'")
-                all_valid = False
+                continue
+
+            self.errors.append(f"{file_path}: Unknown entity '{entity_id}'")
+            all_valid = False
 
         # Validate entity registry ID references (UUID format)
         for registry_id in entity_registry_ids:

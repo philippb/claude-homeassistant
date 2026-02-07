@@ -63,7 +63,7 @@ async def rename_entity(old_entity_id: str, new_entity_id: str) -> bool:
                 print(f"❌ Authentication failed: {msg}")
                 return False
 
-            print(f"✅ Connected to Home Assistant")
+            print("✅ Connected to Home Assistant")
 
             # Send entity registry update
             await ws.send(
@@ -124,7 +124,7 @@ async def rename_entities(renames: list[tuple[str, str]]) -> int:
                 print(f"❌ Authentication failed: {msg}")
                 return 0
 
-            print(f"✅ Connected to Home Assistant")
+            print("✅ Connected to Home Assistant")
 
             # Rename each entity
             for i, (old_id, new_id) in enumerate(renames, start=1):
@@ -155,6 +155,7 @@ async def rename_entities(renames: list[tuple[str, str]]) -> int:
 
 
 def main():
+    """CLI entrypoint."""
     if len(sys.argv) < 3:
         print("Usage: python rename_entity.py <old_entity_id> <new_entity_id>")
         print("       python rename_entity.py --batch <old1>,<new1> <old2>,<new2> ...")
