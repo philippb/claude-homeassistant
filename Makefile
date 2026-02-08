@@ -175,6 +175,20 @@ check-env:
 	@if [ ! -f ".env" ]; then \
 		echo "$(YELLOW)Warning: .env file not found. Copy .env.example to .env and configure your settings.$(NC)"; \
 	fi
+	@if ! command -v rsync >/dev/null 2>&1; then \
+		echo "$(RED)Error: rsync not found in PATH.$(NC)"; \
+		echo "$(YELLOW)Install via Homebrew: brew install rsync$(NC)"; \
+		exit 1; \
+	fi
+	@if ! ssh -o ConnectTimeout=5 $(HA_HOST) "command -v rsync" >/dev/null 2>&1; then \
+		echo "$(RED)Error: rsync not found on Home Assistant ($(HA_HOST)).$(NC)"; \
+		echo "$(YELLOW)For Home Assistant OS, install the 'Advanced SSH & Web Terminal' addon$(NC)"; \
+		echo "$(YELLOW)and add rsync to the packages list in the addon configuration:$(NC)"; \
+		echo "$(YELLOW)  packages:$(NC)"; \
+		echo "$(YELLOW)    - rsync$(NC)"; \
+		echo "$(YELLOW)Then restart the addon.$(NC)"; \
+		exit 1; \
+	fi
 
 # Development targets (not shown in help)
 .PHONY: pull-storage push-storage validate-yaml validate-references validate-ha
