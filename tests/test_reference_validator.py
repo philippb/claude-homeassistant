@@ -367,10 +367,10 @@ class TestNoIntegrationDomainSkip:
 
 
 class TestRestoreStateFallback:
-    """Tests for restore state fallback behavior."""
+    """Tests for restore state diagnostics behavior."""
 
-    def test_entity_in_restore_state_is_accepted(self, temp_config_dir):
-        """Accepts entity IDs found in restore state when not in registry."""
+    def test_entity_in_restore_state_still_fails_validation(self, temp_config_dir):
+        """Unknown entities in restore state should still fail validation."""
         restore_payload = {"data": [{"state": {"entity_id": "sensor.restored_entity"}}]}
         (temp_config_dir / ".storage" / "core.restore_state").write_text(
             json.dumps(restore_payload)
@@ -390,10 +390,12 @@ class TestRestoreStateFallback:
         (temp_config_dir / "test_config.yaml").write_text(yaml.dump(config))
 
         validator = ReferenceValidator(str(temp_config_dir))
-        assert validator.validate_file_references(temp_config_dir / "test_config.yaml")
+        assert not validator.validate_file_references(
+            temp_config_dir / "test_config.yaml"
+        )
 
         error_messages = " ".join(validator.errors)
-        assert "sensor.restored_entity" not in error_messages
+        assert "sensor.restored_entity" in error_messages
 
         warning_messages = " ".join(validator.warnings)
         assert "sensor.restored_entity" in warning_messages

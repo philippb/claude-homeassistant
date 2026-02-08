@@ -180,7 +180,12 @@ check-env:
 		echo "$(YELLOW)Install via Homebrew: brew install rsync$(NC)"; \
 		exit 1; \
 	fi
-	@if ! ssh -o ConnectTimeout=5 $(HA_HOST) "command -v rsync" >/dev/null 2>&1; then \
+	@if ! ssh -o ConnectTimeout=5 -o BatchMode=yes $(HA_HOST) "exit" >/dev/null 2>&1; then \
+		echo "$(RED)Error: Unable to connect to Home Assistant via SSH ($(HA_HOST)).$(NC)"; \
+		echo "$(YELLOW)Check SSH auth, host reachability, and DNS/hostname settings.$(NC)"; \
+		exit 1; \
+	fi
+	@if ! ssh -o ConnectTimeout=5 -o BatchMode=yes $(HA_HOST) "command -v rsync >/dev/null 2>&1"; then \
 		echo "$(RED)Error: rsync not found on Home Assistant ($(HA_HOST)).$(NC)"; \
 		echo "$(YELLOW)For Home Assistant OS, install the 'Advanced SSH & Web Terminal' addon$(NC)"; \
 		echo "$(YELLOW)and add rsync to the packages list in the addon configuration:$(NC)"; \

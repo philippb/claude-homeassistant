@@ -185,9 +185,8 @@ class ReferenceValidator:
     def load_restore_state_entities(self) -> Set[str]:
         """Load and cache entity_ids found in restore state storage.
 
-        The entity registry is not guaranteed to include every entity. Restore
-        state is a pragmatic fallback for entities that exist at runtime but do
-        not have an entry in the registry.
+        Restore state can contain stale entries and is not authoritative for
+        reference validation. We use it only for diagnostics.
         """
         if self._restore_entities is None:
             restore_file = self.storage_dir / "core.restore_state"
@@ -768,13 +767,12 @@ class ReferenceValidator:
                 continue  # Built-in domain (zone.*, persistent_notification.*)
 
             if entity_id in restore_entities:
-                # Restore state is a best-effort fallback for entities not present in
-                # the entity registry (e.g., entities without unique_id support).
+                # Restore state is diagnostic only. Unknown entities must still fail
+                # validation because restore data can be stale after renames/removal.
                 self.warnings.append(
                     f"{file_path}: Entity '{entity_id}' not in registry "
                     "but found in restore state"
                 )
-                continue
 
             self.errors.append(f"{file_path}: Unknown entity '{entity_id}'")
             all_valid = False
