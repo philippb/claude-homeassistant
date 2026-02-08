@@ -95,6 +95,12 @@ needed, make them manually in the Home Assistant UI:
 
 This project includes comprehensive validation to prevent invalid configurations:
 
+### Core Goal
+
+- Verify all agent-produced configuration and automation changes before saving YAML files to Home Assistant
+- Never generate, save, or push YAML changes that fail validation
+- Use a layered validation suite that combines Home Assistant's own validation with repository-specific validators
+
 1. **YAML Syntax Validation** - Ensures proper YAML syntax with HA-specific tags
 2. **Entity Reference Validation** - Checks that all referenced entities/devices exist
 3. **Official HA Validation** - Uses Home Assistant's own validation tools

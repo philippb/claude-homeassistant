@@ -283,7 +283,10 @@ class ReferenceValidator:
                     data = yaml.load(f, Loader=HAYamlLoader)
                     if isinstance(data, dict):
                         for group_name in data.keys():
-                            entities.add(f"group.{group_name}")
+                            if isinstance(group_name, str) and self._is_valid_object_id(
+                                group_name
+                            ):
+                                entities.add(f"group.{group_name}")
             except Exception:
                 pass  # Ignore errors, will be caught by YAML validator
 
@@ -307,7 +310,10 @@ class ReferenceValidator:
             # Extract groups
             if "group" in data and isinstance(data["group"], dict):
                 for group_name in data["group"].keys():
-                    entities.add(f"group.{group_name}")
+                    if isinstance(group_name, str) and self._is_valid_object_id(
+                        group_name
+                    ):
+                        entities.add(f"group.{group_name}")
 
             # Extract input helpers
             for input_type in [
@@ -320,7 +326,8 @@ class ReferenceValidator:
             ]:
                 if input_type in data and isinstance(data[input_type], dict):
                     for name in data[input_type].keys():
-                        entities.add(f"{input_type}.{name}")
+                        if isinstance(name, str) and self._is_valid_object_id(name):
+                            entities.add(f"{input_type}.{name}")
 
             # Extract template entities
             if "template" in data:
@@ -345,7 +352,10 @@ class ReferenceValidator:
                                 ):
                                     sensors = item.get("sensors", {})
                                     for name in sensors.keys():
-                                        entities.add(f"{sensor_type}.{name}")
+                                        if isinstance(
+                                            name, str
+                                        ) and self._is_valid_object_id(name):
+                                            entities.add(f"{sensor_type}.{name}")
 
         except Exception:
             pass  # Ignore errors
@@ -437,7 +447,10 @@ class ReferenceValidator:
                     data = yaml.load(f, Loader=HAYamlLoader)
                     if isinstance(data, dict):
                         for script_name in data.keys():
-                            entities.add(f"script.{script_name}")
+                            if isinstance(
+                                script_name, str
+                            ) and self._is_valid_object_id(script_name):
+                                entities.add(f"script.{script_name}")
             except Exception:
                 pass
 

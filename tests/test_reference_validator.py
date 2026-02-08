@@ -165,6 +165,161 @@ class TestAutomationEntityDerivation:
         assert "automation.my_complex_automation_name" in entities
 
 
+class TestConfigEntityObjectIdValidation:
+    """Tests that config-defined entities only accept valid object IDs."""
+
+    def test_groups_yaml_ignores_invalid_object_ids(self, temp_config_dir):
+        """Only valid group object IDs from groups.yaml should be tracked."""
+        groups = {
+            "valid_group": {"name": "Valid Group"},
+            "Invalid Group": {"name": "Invalid Group"},
+            "UPPERCASE_GROUP": {"name": "Uppercase Group"},
+        }
+        (temp_config_dir / "groups.yaml").write_text(yaml.dump(groups))
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        entities = validator.get_config_defined_entities()
+
+        assert "group.valid_group" in entities
+        assert "group.Invalid Group" not in entities
+        assert "group.UPPERCASE_GROUP" not in entities
+
+    def test_configuration_helpers_ignore_invalid_object_ids(self, temp_config_dir):
+        """Only valid group/input helper keys from configuration.yaml are tracked."""
+        config = {
+            "group": {
+                "kitchen_lights": {"name": "Kitchen Lights"},
+                "Kitchen Lights": {"name": "Invalid Group Key"},
+            },
+            "input_boolean": {
+                "vacation_mode": {"name": "Vacation Mode"},
+                "Vacation Mode": {"name": "Invalid Helper Key"},
+            },
+        }
+        (temp_config_dir / "configuration.yaml").write_text(yaml.dump(config))
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        entities = validator.get_config_defined_entities()
+
+        assert "group.kitchen_lights" in entities
+        assert "group.Kitchen Lights" not in entities
+        assert "input_boolean.vacation_mode" in entities
+        assert "input_boolean.Vacation Mode" not in entities
+
+        bad_reference = {
+            "automation": [
+                {
+                    "trigger": {
+                        "platform": "state",
+                        "entity_id": "input_boolean.Vacation Mode",
+                    },
+                    "action": [],
+                }
+            ]
+        }
+        bad_file = temp_config_dir / "bad_reference.yaml"
+        bad_file.write_text(yaml.dump(bad_reference))
+
+        bad_validator = ReferenceValidator(str(temp_config_dir))
+        assert not bad_validator.validate_file_references(bad_file)
+        assert "input_boolean.Vacation Mode" in " ".join(bad_validator.errors)
+
+        good_reference = {
+            "automation": [
+                {
+                    "trigger": {
+                        "platform": "state",
+                        "entity_id": "input_boolean.vacation_mode",
+                    },
+                    "action": [],
+                }
+            ]
+        }
+        good_file = temp_config_dir / "good_reference.yaml"
+        good_file.write_text(yaml.dump(good_reference))
+
+        good_validator = ReferenceValidator(str(temp_config_dir))
+        assert good_validator.validate_file_references(good_file)
+        assert not good_validator.errors
+
+    def test_legacy_template_sensors_ignore_invalid_object_ids(self, temp_config_dir):
+        """Legacy template sensor keys must be valid object IDs."""
+        config = {
+            "sensor": [
+                {
+                    "platform": "template",
+                    "sensors": {
+                        "valid_sensor_name": {
+                            "friendly_name": "Valid Sensor",
+                            "value_template": "{{ 1 }}",
+                        },
+                        "Bad Name": {
+                            "friendly_name": "Invalid Sensor",
+                            "value_template": "{{ 2 }}",
+                        },
+                    },
+                }
+            ]
+        }
+        (temp_config_dir / "configuration.yaml").write_text(yaml.dump(config))
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        entities = validator.get_config_defined_entities()
+
+        assert "sensor.valid_sensor_name" in entities
+        assert "sensor.Bad Name" not in entities
+
+        bad_reference = {
+            "automation": [
+                {
+                    "trigger": {
+                        "platform": "state",
+                        "entity_id": "sensor.Bad Name",
+                    },
+                    "action": [],
+                }
+            ]
+        }
+        bad_file = temp_config_dir / "bad_legacy_template_reference.yaml"
+        bad_file.write_text(yaml.dump(bad_reference))
+
+        bad_validator = ReferenceValidator(str(temp_config_dir))
+        assert not bad_validator.validate_file_references(bad_file)
+        assert "sensor.Bad Name" in " ".join(bad_validator.errors)
+
+    def test_scripts_yaml_ignores_invalid_object_ids(self, temp_config_dir):
+        """Script entities derived from scripts.yaml must use valid object IDs."""
+        scripts = {
+            "good_script": {"sequence": []},
+            "Bad Script": {"sequence": []},
+        }
+        (temp_config_dir / "scripts.yaml").write_text(yaml.dump(scripts))
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        entities = validator.get_config_defined_entities()
+
+        assert "script.good_script" in entities
+        assert "script.Bad Script" not in entities
+
+        bad_reference = {
+            "automation": [
+                {
+                    "trigger": {
+                        "platform": "state",
+                        "entity_id": "script.Bad Script",
+                    },
+                    "action": [],
+                }
+            ]
+        }
+        bad_file = temp_config_dir / "bad_script_reference.yaml"
+        bad_file.write_text(yaml.dump(bad_reference))
+
+        bad_validator = ReferenceValidator(str(temp_config_dir))
+        assert not bad_validator.validate_file_references(bad_file)
+        assert "script.Bad Script" in " ".join(bad_validator.errors)
+
+
 class TestSceneEntityDerivation:
     """Tests for scene entity ID derivation."""
 

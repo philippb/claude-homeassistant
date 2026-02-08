@@ -23,12 +23,7 @@ command_exists() {
 echo "🔍 Checking prerequisites..."
 
 # Check if Python 3.12+ is available (required by Home Assistant 2024.x)
-# Prefer python3.12 binary if available, fall back to python3
-if command_exists python3.12; then
-    PYTHON_CMD="python3.12"
-elif command_exists python3; then
-    PYTHON_CMD="python3"
-else
+if ! command_exists python3; then
     echo "❌ Python 3 is not installed."
     echo ""
     echo "Install Python 3.12+ via Homebrew (recommended):"
@@ -39,9 +34,9 @@ else
 fi
 
 # Check Python version - Home Assistant 2024.x requires Python 3.12+
-PYTHON_VERSION=$($PYTHON_CMD -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
 
-if ! $PYTHON_CMD -c "import sys; exit(0 if sys.version_info >= (3, 12) else 1)"; then
+if ! python3 -c "import sys; exit(0 if sys.version_info >= (3, 12) else 1)"; then
     echo "❌ Python $PYTHON_VERSION found, but Python 3.12+ is required."
     echo ""
     echo "Home Assistant 2024.x requires Python 3.12 or newer."
@@ -58,7 +53,7 @@ if ! $PYTHON_CMD -c "import sys; exit(0 if sys.version_info >= (3, 12) else 1)";
     exit 1
 fi
 
-echo "✅ Python $PYTHON_VERSION found (using $PYTHON_CMD)"
+echo "✅ Python $PYTHON_VERSION found"
 
 # Check if git is available
 if ! command_exists git; then
@@ -90,29 +85,13 @@ fi
 
 echo "✅ SSH found"
 
-# Check for rsync (required for make pull/push)
-if command_exists rsync; then
-    echo "✅ Rsync found"
-else
-    echo "❌ Rsync is not installed."
-    echo ""
-    echo "Install rsync via Homebrew:"
-    echo "   brew install rsync"
-    echo ""
-    echo "Then run this script again."
-    exit 1
-fi
-
-# Note: Homebrew PATH is configured in Makefile directly to avoid
-# recursive variable issues with Make's .env include
-
 echo ""
 echo "🐍 Setting up Python environment..."
 
 # Create virtual environment
 if [ ! -d "venv" ]; then
     echo "Creating Python virtual environment..."
-    $PYTHON_CMD -m venv venv
+    python3 -m venv venv
 else
     echo "Virtual environment already exists"
 fi
@@ -135,10 +114,10 @@ echo "🔍 Verifying Python environment..."
 # Verify critical dependencies are importable
 VERIFY_FAILED=false
 
-$PYTHON_CMD -c "import yaml" 2>/dev/null || { echo "❌ PyYAML not installed correctly"; VERIFY_FAILED=true; }
-$PYTHON_CMD -c "import voluptuous" 2>/dev/null || { echo "❌ Voluptuous not installed correctly"; VERIFY_FAILED=true; }
-$PYTHON_CMD -c "import jsonschema" 2>/dev/null || { echo "❌ jsonschema not installed correctly"; VERIFY_FAILED=true; }
-$PYTHON_CMD -c "import requests" 2>/dev/null || { echo "❌ requests not installed correctly"; VERIFY_FAILED=true; }
+python3 -c "import yaml" 2>/dev/null || { echo "❌ PyYAML not installed correctly"; VERIFY_FAILED=true; }
+python3 -c "import voluptuous" 2>/dev/null || { echo "❌ Voluptuous not installed correctly"; VERIFY_FAILED=true; }
+python3 -c "import jsonschema" 2>/dev/null || { echo "❌ jsonschema not installed correctly"; VERIFY_FAILED=true; }
+python3 -c "import requests" 2>/dev/null || { echo "❌ requests not installed correctly"; VERIFY_FAILED=true; }
 
 if [ "$VERIFY_FAILED" = true ]; then
     echo ""

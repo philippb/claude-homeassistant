@@ -29,6 +29,29 @@ jobs:
       - name: Run rsync exclude tests
         run: python -m pytest tests/test_rsync_excludes.py -o addopts=
 
+  reference-validator-tests:
+    name: Reference Validator Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install pytest pytest-cov pyyaml
+
+      - name: Run reference validator tests with focused coverage
+        run: >-
+          python -m pytest tests/test_reference_validator.py -o addopts=
+          --cov=tools.reference_validator
+          --cov-report=term-missing
+          --cov-fail-under=65
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
