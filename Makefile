@@ -13,6 +13,8 @@ LOCAL_CONFIG_PATH ?= config/
 BACKUP_DIR ?= backups
 VENV_PATH ?= venv
 TOOLS_PATH ?= tools
+MAX_BACKUPS ?= 5
+SKIP_BACKUP ?= 0
 
 # Colors for output
 GREEN = \033[0;32m
@@ -20,7 +22,7 @@ YELLOW = \033[1;33m
 RED = \033[0;31m
 NC = \033[0m # No Color
 
-.PHONY: help pull push validate backup clean setup test status entities reload format-yaml check-env
+.PHONY: help pull push validate backup clean setup test status entities reload format-yaml check-env list-backups restore
 
 # Default target
 help:
@@ -38,10 +40,13 @@ help:
 	@echo "  $(YELLOW)reload$(NC)   - Reload Home Assistant configuration (without pushing)"
 	@echo "  $(YELLOW)format-yaml$(NC) - Format YAML files (usage: make format-yaml [FILES='file1.yaml file2.yaml'])"
 	@echo "  $(YELLOW)check-env$(NC) - Validate environment configuration (.env file)"
+	@echo "  $(YELLOW)list-backups$(NC) - List available configuration backups"
+	@echo "  $(YELLOW)restore$(NC)  - Restore config from backup (BACKUP=path or most recent)"
 	@echo "  $(YELLOW)clean$(NC)    - Clean up temporary files and caches"
 
 # Pull configuration from Home Assistant
 pull: check-env
+	@$(MAKE) _auto-backup _BACKUP_LABEL=pre-pull
 	@echo "$(GREEN)Pulling configuration from Home Assistant...$(NC)"
 	@rsync -avz --delete --exclude-from=.rsync-excludes-pull $(HA_HOST):$(HA_REMOTE_PATH) $(LOCAL_CONFIG_PATH)
 	@echo "$(GREEN)Configuration pulled successfully!$(NC)"
@@ -52,6 +57,7 @@ pull: check-env
 push: check-env
 	@echo "$(GREEN)Validating configuration before push...$(NC)"
 	@$(MAKE) validate
+	@$(MAKE) _auto-backup _BACKUP_LABEL=pre-push
 	@echo "$(GREEN)Validation passed! Pushing to Home Assistant...$(NC)"
 	@rsync -avz --delete --exclude-from=.rsync-excludes-push $(LOCAL_CONFIG_PATH) $(HA_HOST):$(HA_REMOTE_PATH)
 	@echo "$(GREEN)Configuration pushed successfully!$(NC)"
@@ -75,6 +81,7 @@ backup:
 	backup_name="$(BACKUP_DIR)/ha_config_$$timestamp"; \
 	tar -czf "$$backup_name.tar.gz" $(LOCAL_CONFIG_PATH); \
 	echo "$(GREEN)Backup created: $$backup_name.tar.gz$(NC)"
+	@$(MAKE) _rotate-backups
 
 # Set up Python environment and dependencies
 setup:
@@ -195,8 +202,79 @@ check-env:
 		exit 1; \
 	fi
 
+# List available backups
+list-backups:
+	@echo "$(GREEN)Available configuration backups:$(NC)"
+	@echo ""
+	@if [ -d "$(BACKUP_DIR)" ] && ls $(BACKUP_DIR)/ha_config_*.tar.gz 1>/dev/null 2>&1; then \
+		ls -1t $(BACKUP_DIR)/ha_config_*.tar.gz | while read f; do \
+			size=$$(du -h "$$f" | cut -f1); \
+			echo "  $$size  $$f"; \
+		done; \
+		echo ""; \
+		count=$$(ls -1 $(BACKUP_DIR)/ha_config_*.tar.gz 2>/dev/null | wc -l | tr -d ' '); \
+		echo "$(YELLOW)Total: $$count backup(s) (max retained: $(MAX_BACKUPS))$(NC)"; \
+	else \
+		echo "  $(YELLOW)No backups found.$(NC)"; \
+	fi
+
+# Restore configuration from backup
+restore:
+	@if [ -d "$(BACKUP_DIR)" ] && ls $(BACKUP_DIR)/ha_config_*.tar.gz 1>/dev/null 2>&1; then \
+		if [ -n "$(BACKUP)" ]; then \
+			backup_file="$(BACKUP)"; \
+		else \
+			backup_file=$$(ls -1t $(BACKUP_DIR)/ha_config_*.tar.gz | head -1); \
+		fi; \
+		if [ ! -f "$$backup_file" ]; then \
+			echo "$(RED)Error: Backup file not found: $$backup_file$(NC)"; \
+			exit 1; \
+		fi; \
+		echo "$(YELLOW)Will restore from: $$backup_file$(NC)"; \
+		echo "$(RED)WARNING: This will overwrite the current config/ directory!$(NC)"; \
+		echo "$(YELLOW)Press Ctrl+C within 5 seconds to cancel...$(NC)"; \
+		sleep 5; \
+		echo "$(GREEN)Restoring configuration...$(NC)"; \
+		rm -rf $(LOCAL_CONFIG_PATH); \
+		tar -xzf "$$backup_file"; \
+		echo "$(GREEN)Configuration restored from: $$backup_file$(NC)"; \
+	else \
+		echo "$(RED)No backups found in $(BACKUP_DIR)/$(NC)"; \
+		exit 1; \
+	fi
+
+# Internal: auto-backup before destructive operations
+_auto-backup:
+	@if [ "$(SKIP_BACKUP)" = "1" ]; then \
+		echo "$(YELLOW)Skipping auto-backup (SKIP_BACKUP=1)$(NC)"; \
+	elif [ ! -d "$(LOCAL_CONFIG_PATH)" ]; then \
+		echo "$(YELLOW)Skipping auto-backup ($(LOCAL_CONFIG_PATH) does not exist yet)$(NC)"; \
+	else \
+		echo "$(GREEN)Creating auto-backup ($(_BACKUP_LABEL))...$(NC)"; \
+		mkdir -p $(BACKUP_DIR); \
+		timestamp=$$(date +%Y%m%d_%H%M%S); \
+		backup_name="$(BACKUP_DIR)/ha_config_$(_BACKUP_LABEL)_$$timestamp"; \
+		tar -czf "$$backup_name.tar.gz" $(LOCAL_CONFIG_PATH); \
+		echo "$(GREEN)Auto-backup created: $$backup_name.tar.gz$(NC)"; \
+		$(MAKE) _rotate-backups; \
+	fi
+
+# Internal: rotate old backups beyond MAX_BACKUPS
+_rotate-backups:
+	@if [ -d "$(BACKUP_DIR)" ] && ls $(BACKUP_DIR)/ha_config_*.tar.gz 1>/dev/null 2>&1; then \
+		count=$$(ls -1 $(BACKUP_DIR)/ha_config_*.tar.gz | wc -l | tr -d ' '); \
+		if [ "$$count" -gt "$(MAX_BACKUPS)" ]; then \
+			excess=$$((count - $(MAX_BACKUPS))); \
+			echo "$(YELLOW)Rotating backups: removing $$excess old backup(s) (keeping $(MAX_BACKUPS))$(NC)"; \
+			ls -1t $(BACKUP_DIR)/ha_config_*.tar.gz | tail -n "$$excess" | while read f; do \
+				rm -f "$$f"; \
+				echo "  Removed: $$f"; \
+			done; \
+		fi; \
+	fi
+
 # Development targets (not shown in help)
-.PHONY: pull-storage push-storage validate-yaml validate-references validate-ha
+.PHONY: pull-storage push-storage validate-yaml validate-references validate-ha _auto-backup _rotate-backups
 
 # Pull only storage files (for development)
 pull-storage:

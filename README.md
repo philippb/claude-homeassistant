@@ -251,10 +251,18 @@ xcode-select --install  # Installs Command Line Tools including make
 
 ### Configuration Management
 ```bash
-make pull      # Pull latest config from Home Assistant
-make push      # Push local config to HA (with validation)
+make pull      # Pull latest config from Home Assistant (auto-backup first)
+make push      # Push local config to HA (with validation, auto-backup first)
 make backup    # Create timestamped backup
 make validate  # Run all validation tests
+```
+
+### Backup & Restore
+```bash
+make list-backups                    # List available backups with sizes
+make restore                         # Restore most recent backup
+make restore BACKUP=backups/file.tar.gz  # Restore specific backup
+make pull SKIP_BACKUP=1              # Skip auto-backup (e.g., first run)
 ```
 
 ### Entity Discovery
@@ -480,6 +488,9 @@ LOCAL_CONFIG_PATH=config/                # Local config directory
 BACKUP_DIR=backups                       # Backup directory
 VENV_PATH=venv                          # Python virtual environment path
 TOOLS_PATH=tools                        # Tools directory
+
+# Backup Configuration (optional)
+MAX_BACKUPS=5                           # Max backups to retain (oldest auto-deleted)
 ```
 
 ### Claude Code Settings

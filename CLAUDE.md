@@ -72,10 +72,16 @@ needed, make them manually in the Home Assistant UI:
 ## Available Commands
 
 ### Configuration Management
-- `make pull` - Pull latest config from Home Assistant instance
-- `make push` - Push local config to Home Assistant (with validation)
+- `make pull` - Pull latest config from Home Assistant instance (auto-backup first)
+- `make push` - Push local config to Home Assistant (with validation, auto-backup first)
 - `make backup` - Create backup of current config
 - `make validate` - Run all validation tests
+- `make list-backups` - List available backups with sizes
+- `make restore` - Restore most recent backup (or `make restore BACKUP=path`)
+
+### Backup Options
+- `SKIP_BACKUP=1` - Skip auto-backup (e.g., `make pull SKIP_BACKUP=1`)
+- `MAX_BACKUPS=N` - Max backups to retain (default: 5, set in `.env`)
 
 ### Validation Tools
 - `python tools/run_tests.py` - Run complete validation suite
