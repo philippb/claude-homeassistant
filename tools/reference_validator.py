@@ -269,6 +269,9 @@ class ReferenceValidator:
         # Extract zone entities from configuration and storage
         entities.update(self._extract_zone_entities())
 
+        # Extract platform-based entities (calendar, etc.) from configuration.yaml
+        entities.update(self._extract_platform_entities())
+
         return entities
 
     def _extract_groups(self) -> Set[str]:
@@ -343,18 +346,21 @@ class ReferenceValidator:
                     sensor_data = data[sensor_type]
                     if isinstance(sensor_data, list):
                         for item in sensor_data:
-                            if isinstance(item, dict):
-                                # Platform-based sensors
-                                if (
-                                    "platform" in item
-                                    and item["platform"] == "template"
-                                ):
+                            if isinstance(item, dict) and "platform" in item:
+                                # Legacy template platform uses named keys
+                                if item["platform"] == "template":
                                     sensors = item.get("sensors", {})
                                     for name in sensors.keys():
                                         if isinstance(
                                             name, str
                                         ) and self._is_valid_object_id(name):
                                             entities.add(f"{sensor_type}.{name}")
+                                # Other platforms derive entity_id from name
+                                name = item.get("name")
+                                if isinstance(name, str):
+                                    object_id = self._slugify_object_id(name)
+                                    if object_id:
+                                        entities.add(f"{sensor_type}.{object_id}")
 
         except Exception:
             pass  # Ignore errors
@@ -529,6 +535,52 @@ class ReferenceValidator:
                                     entities.add(f"zone.{object_id}")
             except Exception:
                 pass
+
+        return entities
+
+    def _extract_platform_entities(self) -> Set[str]:
+        """Extract entities from YAML platform configurations (e.g., calendar).
+
+        Platform-based entities defined in YAML don't have unique IDs and
+        won't appear in the entity registry. Entity IDs are derived from
+        the platform's name fields (e.g., calendars list for CalDAV).
+        """
+        entities: Set[str] = set()
+        config_file = self.config_dir / "configuration.yaml"
+
+        if not config_file.exists():
+            return entities
+
+        try:
+            with open(config_file, "r", encoding="utf-8") as f:
+                data = yaml.load(f, Loader=HAYamlLoader)
+
+            if not isinstance(data, dict):
+                return entities
+
+            # Calendar platforms (CalDAV, etc.)
+            if "calendar" in data:
+                calendar_data = data["calendar"]
+                if isinstance(calendar_data, list):
+                    for item in calendar_data:
+                        if isinstance(item, dict):
+                            # CalDAV uses 'calendars' list of names
+                            calendars = item.get("calendars", [])
+                            if isinstance(calendars, list):
+                                for name in calendars:
+                                    if isinstance(name, str):
+                                        object_id = self._slugify_object_id(name)
+                                        if object_id:
+                                            entities.add(f"calendar.{object_id}")
+                            # Generic: platform with 'name' field
+                            name = item.get("name")
+                            if isinstance(name, str):
+                                object_id = self._slugify_object_id(name)
+                                if object_id:
+                                    entities.add(f"calendar.{object_id}")
+
+        except Exception:
+            pass
 
         return entities
 
