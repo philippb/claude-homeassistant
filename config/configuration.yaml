@@ -1,62 +1,1861 @@
-# Example Home Assistant Configuration File
-# This is a minimal example configuration for demonstration purposes
+# Loads default set of integrations. Do not remove.
+default_config:
 
-# Basic Home Assistant configuration
-homeassistant:
-  name: Home
-  latitude: 37.7749
-  longitude: -122.4194
-  elevation: 0
-  unit_system: metric
-  currency: USD
-  country: US
-  time_zone: America/Los_Angeles
+# Text to speech
+tts:
+  - platform: google_translate
 
-# Load frontend
-frontend:
-
-# Enable configuration panel
-config:
-
-# Enable the map panel
-map:
-
-# Enable mobile app integration
-mobile_app:
-
-# Enable history and logbook
-history:
-logbook:
-
-# Enable system health
-system_health:
-
-# Include automations and scripts
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
 
-# Example integrations
-weather:
-  - platform: met
-    name: Local Weather
+homeassistant:
+  packages: !include_dir_named packages
 
-# Example groups
-group:
-  living_room:
-    name: "Living Room"
-    entities:
-      - light.living_room_main
-      - switch.living_room_fan
 
-# Example sensors
+template:
+  - sensor:
+      - name: "EV Charging Status (UI)"
+        unique_id: ev_charging_status_ui
+        icon: mdi:car-electric
+        state: >-
+          {% if is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            Smart charging ON
+          {% else %}
+            Smart charging OFF
+          {% endif %}
+        attributes:
+          text: >-
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set soc_raw = states('sensor.smart_battery') %}
+            {% set soc = soc_raw | float(0) if soc_raw not in ['unknown','unavailable','none',''] else none %}
+            {% set target = states('input_number.ev_max_soc') | float(100) %}
+            {% set rem = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+            {% set should = is_state('binary_sensor.ev_should_charge_now_15m','on') %}
+            {% set mode = states('sensor.zag063912_charger_mode') %}
+            {% set charging = (mode == 'connected_charging') %}
+            {% set dl = states('input_datetime.ev_deadline') %}
+            {% set deadline = as_local(as_datetime(dl)).strftime('%d.%m.%Y %H:%M') if dl not in ['unknown','unavailable','none',''] else 'ei asetettu' %}
+            {% if not enabled %}
+            🔌 Smart charging ei ole aktiivinen.
+            {% elif soc is none %}
+            ⚠️ Auton SOC ei ole saatavilla.
+            {% else %}
+            🚗 Auto: {{ soc | round(0) }} %<br>
+            🎯 Tavoite: {{ target | round(0) }} %<br>
+            ⚡ Puuttuu: {{ rem | round(2) }} kWh<br>
+            ⏰ Deadline: {{ deadline }}<br>
+            {% if soc >= target - 0.1 %}
+            ✅ Tavoite saavutettu.
+            {% elif should and charging %}
+            🔄 Ladataan parhaillaan.
+            {% elif should and not charging %}
+            ⚠️ Latausta pyydetään, mutta laturi ei lataa (tila: {{ mode }}).
+            {% elif not should and charging %}
+            ⚠️ Laturi lataa, vaikka slotti ei ole aktiivinen.
+            {% else %}
+            ⏳ Odottaa seuraavaa latausslottia.
+            {% endif %}
+            {% endif %}
+            
+  - sensor:
+      - name: "EV UI status text"
+        unique_id: ev_ui_status_text
+        icon: mdi:car-electric
+        state: >-
+          {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+          {% if not enabled %} Inactive {% else %} Active {% endif %}
+        attributes:
+          text: |
+            {%- set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') -%}
+            {%- set soc_raw = states('sensor.smart_battery') -%}
+            {%- set soc = soc_raw | float(0) if soc_raw not in ['unknown','unavailable','none',''] else none -%}
+            {%- set target = states('input_number.ev_max_soc') | float(100) -%}
+
+            {%- set dl = states('input_datetime.ev_deadline') -%}
+            {%- set end_ts = as_timestamp(as_datetime(dl)) if dl not in ['unknown','unavailable','none',''] else none -%}
+            {%- set now_ts = as_timestamp(now()) -%}
+
+            {%- set kw = states('sensor.ev_effective_charge_power_kw') | float(0) -%}
+            {%- set per_q = kw * 0.25 -%}
+            {%- set rem_kwh = states('sensor.ev_max_target_from_soc_kwh') | float(0) -%}
+
+            {%- set should_now = is_state('binary_sensor.ev_should_charge_now_15m','on') -%}
+            {%- set allowed = is_state('switch.zag063912_charging','on') -%}
+            {%- set mode = states('sensor.zag063912_charger_mode') -%}
+            {%- set actually = (mode == 'connected_charging') -%}
+
+            {%- set left_q = none -%}
+            {%- if end_ts is not none -%}
+              {%- set left_q = ((end_ts - now_ts) / 900) | round(0,'floor') | int -%}
+            {%- endif -%}
+
+            {%- set q_need = 0 -%}
+            {%- if per_q > 0 and rem_kwh > 0 -%}
+              {%- set q_need = (rem_kwh / per_q) | round(0,'ceil') | int -%}
+            {%- endif -%}
+
+            {%- set tight = none -%}
+            {%- if left_q is not none -%}
+              {%- set tight = (left_q <= (q_need + 1)) -%}
+            {%- endif -%}
+
+            ## EV-lataus – tilannekuva (Suomen aika)
+
+            **Ohjaus:** {{ 'PÄÄLLÄ' if enabled else 'POIS' }}
+            **Auto:** {% if soc is none %}SOC ei saatavilla{% else %}{{ soc | round(0) }}%{% endif %}
+            **Tavoite:** {{ target | round(0) }}%
+
+            **Puuttuva energia tavoitteen saavuttamiseen (SOC-pohjainen):** {{ rem_kwh | round(2) }} kWh
+            **Oletettu teho:** {{ kw | round(1) }} kW → **per 15 min:** {{ (per_q if per_q>0 else 0) | round(2) }} kWh
+            **Arvio sloteista vielä:** {{ q_need }} × 15 min
+
+            **Deadline:** {%- if dl in ['unknown','unavailable','none',''] -%} ei asetettu
+              {%- else -%} {{ as_local(as_datetime(dl)).strftime('%d.%m.%Y %H:%M') }}
+              {%- endif -%}
+            **Aikaa jäljellä:** {%- if left_q is none -%} ?
+              {%- else -%} {{ left_q }} × 15 min ({{ ((end_ts - now_ts)/3600) | round(2) }} h)
+              {%- endif -%}
+            **Aikataulu:** {%- if tight is none -%} ei arvioitavissa
+              {%- else -%} {{ 'TIUKALLA' if tight else 'OK' }}
+              {%- endif -%}
+
+            **Tässä 15 min slotissa:** pyydetäänkö latausta = {{ 'KYLLÄ' if should_now else 'EI' }}
+            **Zaptec:** sallittu = {{ 'KYLLÄ' if allowed else 'EI' }}, tila = {{ mode }}
+            **Toteutuuko lataus nyt:** {{ 'KYLLÄ' if actually else 'EI' }}
+
+            {%- if enabled and should_now and allowed and (not actually) -%}
+            ⚠️ **Poikkeama:** järjestelmä pyytää latausta, mutta Zaptec ei ole *connected_charging* -tilassa.
+            {%- endif -%}
+
+            {%- if (soc is not none) and (soc >= (target - 0.1)) -%}
+            ✅ **Tavoite saavutettu** (SOC tavoitteen tasolla).
+            {%- endif -%}
+
+          status_compact: >-
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set soc_raw = states('sensor.smart_battery') %}
+            {% set soc = soc_raw | float(0) if soc_raw not in ['unknown','unavailable','none',''] else none %}
+            {% set target = states('input_number.ev_max_soc') | float(100) %}
+            {% set rem = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+            {% if not enabled %}
+              OFF
+            {% elif soc is none %}
+              Active: SOC?
+            {% else %}
+              Active: {{ soc | round(0) }}% → {{ target | round(0) }}% (rem {{ rem | round(1) }} kWh)
+            {% endif %}
+            
+  - sensor:
+      - name: "EV schedule check"
+        unique_id: ev_schedule_check
+        icon: mdi:timeline-clock
+        state: >-
+          {% set soc_raw = states('sensor.smart_battery') %}
+          {% set soc_now = soc_raw | float(0) if soc_raw not in ['unknown','unavailable','none',''] else none %}
+
+          {% set start_raw = states('input_number.ev_start_soc') %}
+          {% set soc_start = start_raw | float(0) if start_raw not in ['unknown','unavailable','none',''] else none %}
+
+          {% set target_raw = states('input_number.ev_max_soc') %}
+          {% set soc_target = target_raw | float(100) if target_raw not in ['unknown','unavailable','none',''] else 100 %}
+
+          {% set dl = states('input_datetime.ev_deadline') %}
+          {% set end_ts = as_timestamp(as_datetime(dl)) if dl not in ['unknown','unavailable','none',''] else none %}
+          {% set now_ts = as_timestamp(now()) %}
+
+          {% set kw = states('sensor.ev_effective_charge_power_kw') | float(0) %}
+          {% set per_q = kw * 0.25 %}
+
+          {% set rem_kwh = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+
+          {% if soc_now is none %}
+            No car SOC
+          {% elif end_ts is none %}
+            No deadline
+          {% elif end_ts <= now_ts %}
+            Deadline passed
+          {% elif soc_target <= soc_now %}
+            Target reached
+          {% elif kw <= 0 or per_q <= 0 %}
+            No charge power
+          {% else %}
+            {% if soc_start is none %}
+              {% set soc_start = soc_now %}
+            {% endif %}
+
+            {% set denom = (soc_target - soc_start) %}
+            {% set progress = ((soc_now - soc_start) / denom) if denom > 0 else 0 %}
+            {% set progress = [progress, 0] | max %}
+            {% set progress = [progress, 1] | min %}
+
+            {% set q_base = (rem_kwh / per_q) | round(0, 'ceil') | int if rem_kwh > 0 else 0 %}
+            {% set remaining_quarters = ((end_ts - now_ts) / 900) | round(0, 'floor') | int %}
+            {% set tight = remaining_quarters <= (q_base + 1) %}
+
+            start {{ soc_start | round(0) }}% → now {{ soc_now | round(0) }}% → target {{ soc_target | round(0) }}% | prog {{ (progress*100) | round(0) }}% | rem {{ rem_kwh | round(2) }} kWh | need {{ q_base }}×15m | left {{ remaining_quarters }}×15m | {{ 'TIGHT' if tight else 'OK' }}
+          {% endif %}
+        attributes:
+          soc_now: >-
+            {% set v = states('sensor.smart_battery') %}
+            {{ v if v not in ['unknown','unavailable','none',''] else 'unknown' }}
+          soc_start: >-
+            {% set v = states('input_number.ev_start_soc') %}
+            {{ v if v not in ['unknown','unavailable','none',''] else 'unknown' }}
+          soc_target: >-
+            {{ states('input_number.ev_max_soc') }}
+          deadline_local: >-
+            {% set dl = states('input_datetime.ev_deadline') %}
+            {% if dl in ['unknown','unavailable','none',''] %}
+              unknown
+            {% else %}
+              {{ as_local(as_datetime(dl)).strftime('%d.%m.%Y %H:%M') }}
+            {% endif %}
+          rem_kwh: >-
+            {{ states('sensor.ev_max_target_from_soc_kwh') | float(0) | round(3) }}
+          effective_kw: >-
+            {{ states('sensor.ev_effective_charge_power_kw') | float(0) | round(2) }}
+          per_q_kwh: >-
+            {% set kw = states('sensor.ev_effective_charge_power_kw') | float(0) %}
+            {{ (kw * 0.25) | round(3) }}
+          q_base: >-
+            {% set kw = states('sensor.ev_effective_charge_power_kw') | float(0) %}
+            {% set per_q = kw * 0.25 %}
+            {% set rem = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+            {% if per_q <= 0 or rem <= 0 %}
+              0
+            {% else %}
+              {{ (rem / per_q) | round(0, 'ceil') | int }}
+            {% endif %}
+          remaining_quarters_to_deadline: >-
+            {% set dl = states('input_datetime.ev_deadline') %}
+            {% set end_ts = as_timestamp(as_datetime(dl)) if dl not in ['unknown','unavailable','none',''] else none %}
+            {% if end_ts is none %}
+              unknown
+            {% else %}
+              {{ ((end_ts - as_timestamp(now())) / 900) | round(0, 'floor') | int }}
+            {% endif %}
+          tight: >-
+            {% set kw = states('sensor.ev_effective_charge_power_kw') | float(0) %}
+            {% set per_q = kw * 0.25 %}
+            {% set rem = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+            {% set q = (rem / per_q) | round(0, 'ceil') | int if per_q > 0 and rem > 0 else 0 %}
+            {% set dl = states('input_datetime.ev_deadline') %}
+            {% set end_ts = as_timestamp(as_datetime(dl)) if dl not in ['unknown','unavailable','none',''] else none %}
+            {% if end_ts is none %}
+              unknown
+            {% else %}
+              {% set left = ((end_ts - as_timestamp(now())) / 900) | round(0, 'floor') | int %}
+              {{ left <= (q + 1) }}
+            {% endif %}
+          note: "SOC-based schedule check; does not control charging."
+
+  - sensor:
+      - name: "EV active plan text"
+        unique_id: ev_active_plan_text
+        icon: mdi:calendar-clock
+        state: >-
+          {{ states('sensor.ev_planned_cost_eur_v3') }}
+        attributes:
+          text: |
+            {%- set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') -%}
+            {%- set attr_name = 'planned_slots' if enabled else 'preview_slots' -%}
+            {%- set slots = state_attr('sensor.ev_plan_15m_rank', attr_name) -%}
+            {%- set planned_cost = states('sensor.ev_planned_cost_eur_v3') | float(0) -%}
+            {%- set planned_kwh = state_attr('sensor.ev_planned_cost_eur','planned_energy_kwh') | float(0) -%}
+
+            {%- if slots is not iterable or slots is string or slots|length == 0 -%}
+            ## Active plan (Suomen aika)
+
+            Ei suunnitelmaa.
+            {%- else -%}
+            {%- set adders = 0.06387 -%}
+            {%- set assumed_kw = states('input_number.ev_assumed_charge_kw') | float(0) -%}
+            {%- set per_slot_kwh = assumed_kw * 0.25 -%}
+
+            ## Active plan (Suomen aika)
+
+            {{ slots|length }} × 15 min (Enabled={{ 'ON' if enabled else 'OFF' }})
+            Planned energy: {{ planned_kwh | round(1) }} kWh
+            Total cost (planner): {{ planned_cost | round(2) }} €
+
+            {% for s in slots %}
+            {%- set ts = (s.ts if s.ts is defined else s['ts']) | int(0) -%}
+            {%- set when = as_local(as_datetime(ts)).strftime('%d.%m %H:%M') -%}
+            {%- set p_raw = (s.price if s.price is defined else s['price']) | float(0) -%}
+            {%- if p_raw > 200 -%}
+            {%- set p_eur = p_raw / 1000 -%}
+            {%- elif p_raw > 2 -%}
+            {%- set p_eur = p_raw / 100 -%}
+            {%- else -%}
+            {%- set p_eur = p_raw -%}
+            {%- endif -%}
+            {%- set total_price = p_eur + adders -%}
+            {%- set slot_cost = per_slot_kwh * total_price -%}
+            {{ when }} | {{ total_price | round(3) }} €/kWh | {{ slot_cost | round(2) }} €
+            {% endfor %}
+            {%- endif -%}
+            
+  - sensor:
+      - name: "current price (15m, EUR/kWh)"
+        unique_id: ev_current_price_15m_eur_kwh
+        unit_of_measurement: EUR/kWh
+        icon: mdi:tag
+        state: >-
+          {% set data = state_attr('sensor.ev_price_slots_15m_effective','data') %}
+          {% if data is not iterable or data|length == 0 %}
+            unknown
+          {% else %}
+            {% set slot_ts = (as_timestamp(now()) // 900) * 900 %}
+            {% set found = namespace(v=none) %}
+            {% for it in data %}
+              {% set ts = as_timestamp(it.DateTime) %}
+              {% if ts is not none and (ts | int) == (slot_ts | int) %}
+                {% set found.v = it.PriceWithTax %}
+              {% endif %}
+            {% endfor %}
+            {% if found.v is none %}
+              unknown
+            {% else %}
+              {{ found.v | float(0) | round(2) }}
+            {% endif %}
+          {% endif %}
+
+
+
+      - name: "EV cost this 15m (EUR)"
+        unique_id: ev_cost_this_15m_eur
+        unit_of_measurement: EUR
+        icon: mdi:currency-eur
+        state: >-
+          {% set e = states('sensor.ev_zaptec_energy_15m_kwh') %}
+          {% set p = states('sensor.ev_current_price_15m_eur_kwh') %}
+          {% if e in ['unknown','unavailable','none',''] or p in ['unknown','unavailable','none',''] %}
+            0.0
+          {% else %}
+            {{ (e | float(0) * p | float(0)) | round(3) }}
+          {% endif %}
+
+  - sensor:
+      - name: "EV planned cost (EUR)"
+        unique_id: ev_planned_cost_eur
+        unit_of_measurement: EUR
+        icon: mdi:currency-eur
+        state: >-
+          {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+          {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') %}
+          {% set assumed_kw = states('input_number.ev_assumed_charge_kw') | float(0) %}
+
+          {% set margin_eur_per_kwh = 0.0038 %}
+          {% set transfer_eur_per_kwh = 0.03187 %}
+          {% set tax_eur_per_kwh = 0.0282 %}
+          {% set adder_eur_per_kwh = margin_eur_per_kwh + transfer_eur_per_kwh + tax_eur_per_kwh %}
+
+          {% if slots is not iterable or slots|length == 0 or assumed_kw <= 0 %}
+            0.0
+          {% else %}
+            {% set per_slot_kwh = assumed_kw * 0.25 %}
+            {% set base = namespace(v=0.0) %}
+
+            {# Price normalization -> EUR/kWh #}
+            {% for s in slots %}
+              {% set p_raw = s.price | float(0) %}
+              {% if p_raw > 200 %}
+                {% set p = p_raw / 1000 %}
+              {% elif p_raw > 2 %}
+                {% set p = p_raw / 100 %}
+              {% else %}
+                {% set p = p_raw %}
+              {% endif %}
+              {% set base.v = base.v + (per_slot_kwh * p) %}
+            {% endfor %}
+
+            {% set planned_energy_kwh = (slots|length * per_slot_kwh) %}
+            {% set extra = planned_energy_kwh * adder_eur_per_kwh %}
+            {{ (base.v + extra) | round(2) }}
+          {% endif %}
+        attributes:
+          mode: >-
+            {{ 'active' if is_state('input_boolean.ev_smart_charge_enabled','on') else 'preview' }}
+
+          slots_count: >-
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') %}
+            {{ slots|length if slots is iterable else 0 }}
+
+          planned_energy_kwh: >-
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') %}
+            {% set assumed_kw = states('input_number.ev_assumed_charge_kw') | float(0) %}
+            {% if slots is not iterable or slots|length == 0 or assumed_kw <= 0 %}
+              0
+            {% else %}
+              {{ (slots|length * assumed_kw * 0.25) | round(2) }}
+            {% endif %}
+
+          margin_eur_per_kwh: >-
+            {{ 0.0038 }}
+
+          transfer_eur_per_kwh: >-
+            {{ 0.03187 }}
+
+          tax_eur_per_kwh: >-
+            {{ 0.0282 }}
+
+          adders_total_eur_per_kwh: >-
+            {{ 0.06387 }}
+
+          base_energy_cost_eur: >-
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') %}
+            {% set assumed_kw = states('input_number.ev_assumed_charge_kw') | float(0) %}
+            {% if slots is not iterable or slots|length == 0 or assumed_kw <= 0 %}
+              0
+            {% else %}
+              {% set per_slot_kwh = assumed_kw * 0.25 %}
+              {% set base = namespace(v=0.0) %}
+              {% for s in slots %}
+                {% set p_raw = s.price | float(0) %}
+                {% if p_raw > 200 %}
+                  {% set p = p_raw / 1000 %}
+                {% elif p_raw > 2 %}
+                  {% set p = p_raw / 100 %}
+                {% else %}
+                  {% set p = p_raw %}
+                {% endif %}
+                {% set base.v = base.v + (per_slot_kwh * p) %}
+              {% endfor %}
+              {{ base.v | round(4) }}
+            {% endif %}
+
+          adders_cost_eur: >-
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') %}
+            {% set assumed_kw = states('input_number.ev_assumed_charge_kw') | float(0) %}
+            {% if slots is not iterable or slots|length == 0 or assumed_kw <= 0 %}
+              0
+            {% else %}
+              {% set planned_energy_kwh = (slots|length * assumed_kw * 0.25) %}
+              {{ (planned_energy_kwh * 0.06387) | round(4) }}
+            {% endif %}
+
+          avg_price_eur_per_kwh: >-
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') %}
+            {% if slots is not iterable or slots|length == 0 %}
+              0
+            {% else %}
+              {% set sum = namespace(v=0.0) %}
+              {% for s in slots %}
+                {% set p_raw = s.price | float(0) %}
+                {% if p_raw > 200 %}
+                  {% set p = p_raw / 1000 %}
+                {% elif p_raw > 2 %}
+                  {% set p = p_raw / 100 %}
+                {% else %}
+                  {% set p = p_raw %}
+                {% endif %}
+                {% set sum.v = sum.v + p %}
+              {% endfor %}
+              {{ (sum.v / (slots|length)) | round(6) }}
+            {% endif %}
+
+          avg_total_eur_per_kwh_including_adders: >-
+            {% set base = state_attr('sensor.ev_planned_cost_eur','avg_price_eur_per_kwh') | float(0) %}
+            {{ (base + 0.06387) | round(6) }}
+
+          avg_price_raw: >-
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') %}
+            {% if slots is not iterable or slots|length == 0 %}
+              0
+            {% else %}
+              {% set sum = namespace(v=0.0) %}
+              {% for s in slots %}
+                {% set sum.v = sum.v + (s.price | float(0)) %}
+              {% endfor %}
+              {{ (sum.v / (slots|length)) | round(6) }}
+            {% endif %}
+
+          price_unit_hint: >-
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') %}
+            {% if slots is not iterable or slots|length == 0 %}
+              none
+            {% else %}
+              {% set p0 = (slots[0].price | float(0)) %}
+              {% if p0 > 200 %} eur_per_mwh?
+              {% elif p0 > 2 %} cents_per_kwh?
+              {% else %} eur_per_kwh
+              {% endif %}
+            {% endif %}
+
+            
+      - name: "EV campaign cost so far (EUR)"
+        unique_id: ev_campaign_cost_so_far_eur
+        unit_of_measurement: EUR
+        icon: mdi:cash-clock
+        state: >-
+          {% if not is_state('input_boolean.ev_charge_session_active','on') %}
+            0.0
+          {% else %}
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% if not enabled %}
+              0.0
+            {% else %}
+              {% set slots = state_attr('sensor.ev_plan_15m_rank','planned_slots') %}
+              {% set assumed_kw = states('input_number.ev_assumed_charge_kw') | float(0) %}
+              {% set delivered = states('sensor.ev_delivered_this_session_kwh') | float(0) %}
+              {% if slots is not iterable or slots|length == 0 or assumed_kw <= 0 or delivered <= 0 %}
+                0.0
+              {% else %}
+                {% set now_q = (as_timestamp(now()) // 900) * 900 %}
+                {% set elapsed = slots | selectattr('ts','lt', now_q) | list %}
+                {% set n = elapsed|length %}
+                {% if n == 0 %}
+                  0.0
+                {% else %}
+                  {% set per_slot_kwh = assumed_kw * 0.25 %}
+                  {% set max_energy_elapsed = n * per_slot_kwh %}
+                  {% set energy_to_price = [delivered, max_energy_elapsed] | min %}
+                  {% if energy_to_price <= 0 %}
+                    0.0
+                  {% else %}
+                    {# since per_slot_kwh is constant, weighted avg == mean price of elapsed slots #}
+                    {% set sum_p = namespace(v=0.0) %}
+                    {% for s in elapsed %}
+                      {% set sum_p.v = sum_p.v + (s.price | float(0)) %}
+                    {% endfor %}
+                    {% set avg_p = sum_p.v / n %}
+                    {{ (energy_to_price * avg_p) | round(2) }}
+                  {% endif %}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+          {% endif %}
+        attributes:
+          delivered_kwh: "{{ states('sensor.ev_delivered_this_session_kwh') | float(0) | round(3) }}"
+          elapsed_slots: >-
+            {% set slots = state_attr('sensor.ev_plan_15m_rank','planned_slots') %}
+            {% set now_q = (as_timestamp(now()) // 900) * 900 %}
+            {% if slots is not iterable %} 0 {% else %} {{ (slots | selectattr('ts','lt', now_q) | list | length) }} {% endif %}
+          note: "Prices from elapsed active planned slots; delivered energy capped to elapsed planned energy (assumed kW)."
+
+
+
+
+
+      - name: "EV effective charge power (kW)"
+        unique_id: ev_effective_charge_kw
+        unit_of_measurement: kW
+        icon: mdi:flash
+        state: >-
+          {% set assumed = states('input_number.ev_assumed_charge_kw') | float(0) %}
+          {% set kw = [assumed, 11.0] | min %}
+          {% if kw <= 0 %}
+            0
+          {% else %}
+            {{ kw | round(2) }}
+          {% endif %}
+
+
+  - sensor:
+      - name: "EV max add to 100% (kWh)"
+        unique_id: ev_max_add_to_100_kwh
+        unit_of_measurement: kWh
+        icon: mdi:battery-plus-outline
+        state: >-
+          {% set cap = 62.0 %}
+          {% set soc = states('sensor.smart_battery') | float(0) %}
+          {% set delta = 100.0 - soc %}
+          {% if delta <= 0 %}
+            0
+          {% else %}
+            {{ (cap * (delta/100.0)) | round(2) }}
+          {% endif %}
+        attributes:
+          capacity_kwh: "62"
+          current_soc_percent: >-
+            {{ states('sensor.smart_battery') }}
+
+  - sensor:
+      - name: "EV max target from SOC (kWh)"
+        unique_id: ev_max_target_from_soc_kwh
+        unit_of_measurement: kWh
+        icon: mdi:battery-arrow-up
+        state: >-
+          {% set headroom = states('sensor.ev_headroom_to_max_soc_kwh') | float(0) %}
+          {% set target_add = states('input_number.ev_target_kwh') | float(0) %}
+          {% set rem = [target_add, headroom] | min %}
+          {{ [rem, 0] | max | round(3) }}
+
+      - name: "EV headroom to max SOC (kWh)"
+        unique_id: ev_headroom_to_max_soc_kwh
+        unit_of_measurement: kWh
+        icon: mdi:battery-arrow-up-outline
+        state: >-
+          {% set cap = 62.0 %}
+          {% set soc = states('sensor.smart_battery') | float(0) %}
+          {% set max_soc = states('input_number.ev_max_soc') | float(100) %}
+          {% set delta = max_soc - soc %}
+          {% if delta <= 0 %}
+            0
+          {% else %}
+            {{ (cap * (delta/100.0)) | round(3) }}
+          {% endif %}
+
+      - name: "EV delivered this session (kWh)"
+        unique_id: ev_delivered_session_kwh
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: measurement
+        state: >-
+          {% set start = states('input_number.ev_session_start_kwh') | float(0) %}
+
+          {# Prefer session energy if available (updates better than all-time meter) #}
+          {% set s = states('sensor.zag063912_session_total_charge') %}
+          {% if s not in ['unknown','unavailable','none',''] %}
+            {% set cur = s | float(0) %}
+          {% else %}
+            {% set m = states('sensor.zag063912_energy_meter') %}
+            {% set cur = m | float(0) if m not in ['unknown','unavailable','none',''] else 0 %}
+          {% endif %}
+
+          {{ [cur - start, 0] | max | round(3) }}
+
+
+      - name: "EV remaining to target (kWh)"
+        unique_id: ev_remaining_kwh
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: measurement
+        state: >-
+          {% set target = states('input_number.ev_target_kwh') | float(0) %}
+          {% set done_state = states('sensor.ev_delivered_this_session_kwh') %}
+          {% set done = done_state | float(0) if done_state not in ['unknown','unavailable','none',''] else 0 %}
+          {{ [target - done, 0] | max | round(3) }}
+
+      - name: "EV delivered (car, this enabled period) kWh"
+        unique_id: ev_delivered_car_kwh
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: measurement
+        state: >-
+          {% set cur = states('sensor.ev_energy_in_car_kwh') | float(0) %}
+          {% set start = states('input_number.ev_car_session_start_kwh') | float(0) %}
+          {{ [cur - start, 0] | max | round(3) }}
+
+      - name: "EV delivered (zaptec session, this enabled period) kWh"
+        unique_id: ev_delivered_zaptec_session_kwh
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: measurement
+        state: >-
+          {% set cur = states('sensor.zag063912_session_total_charge') | float(0) %}
+          {% set start = states('input_number.ev_session_start_kwh') | float(0) %}
+          {{ [cur - start, 0] | max | round(3) }}
+
+      - name: "EV delivered used (kWh)"
+        unique_id: ev_delivered_used_kwh
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: measurement
+        state: >-
+          {% set age = state_attr('sensor.ev_smart_charge_status','smart_data_age_minutes') %}
+          {% set age_i = (age | int(999)) if age not in ['unknown','unavailable','none',''] else 999 %}
+          {% if age_i <= 3 %}
+            {{ states('sensor.ev_delivered_car_kwh') | float(0) }}
+          {% else %}
+            {{ states('sensor.ev_delivered_zaptec_session_kwh') | float(0) }}
+          {% endif %}
+
+      - name: "EV remaining used (kWh)"
+        unique_id: ev_remaining_used_kwh
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: measurement
+        state: >-
+          {% set target = states('input_number.ev_target_kwh') | float(0) %}
+          {% set done = states('sensor.ev_delivered_used_kwh') | float(0) %}
+          {{ [target - done, 0] | max | round(3) }}
+
+      - name: "EV charging plan"
+        unique_id: ev_charging_plan_text
+        icon: mdi:calendar-clock
+        state: >-
+          {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+          {% set plan = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') %}
+          {% if plan is not iterable or plan | length == 0 %}
+            No slots
+          {% else %}
+            {{ plan | length }} slots ({{ 'active' if enabled else 'preview' }})
+          {% endif %}
+        attributes:
+          mode: >-
+            {{ 'active' if is_state('input_boolean.ev_smart_charge_enabled','on') else 'preview' }}
+          schedule: >-
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set plan = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') %}
+            {% if plan is not iterable or plan | length == 0 %}
+              No slots
+            {% else %}
+              {% for slot in plan %}
+                {% set ts = slot.ts | int %}
+                {% set start = as_datetime(ts) %}
+                {% set end = as_datetime(ts + 900) %}
+                {{ start.strftime('%d.%m %H:%M') }}–{{ end.strftime('%H:%M') }} → {{ slot.price }}
+                {% if not loop.last %}\n{% endif %}
+              {% endfor %}
+            {% endif %}
+
+
+
+
+      - name: "EV smart charge status"
+        unique_id: ev_smart_charge_status
+        icon: mdi:information-outline
+        state: >-
+          {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+          {% set data = state_attr('sensor.ev_price_slots_15m','data') %}
+          {% set data_ok = data is not none and (data | length) > 0 %}
+          {% set now_ts = as_timestamp(now()) %}
+          {% set dl = states('input_datetime.ev_deadline') %}
+          {% set end_ts = as_timestamp(as_datetime(dl)) if dl not in ['unknown','unavailable','none',''] else 0 %}
+          {% set remaining = states('sensor.ev_remaining_to_target_kwh') | float(0) %}
+          {% if not enabled %}
+            Inactive (manual control)
+          {% elif not data_ok %}
+            Enabled, but price data missing
+          {% elif end_ts <= now_ts %}
+            Deadline passed
+          {% elif remaining <= 0 %}
+            Target reached
+          {% else %}
+            Active (following plan)
+          {% endif %}
+        attributes:
+          delivered_kwh: "{{ states('sensor.ev_delivered_this_session_kwh') | float(0) | round(3) }}"
+          remaining_kwh: "{{ states('sensor.ev_remaining_to_target_kwh') | float(0) | round(3) }}"
+          charging_allowed: "{{ is_state('switch.zag063912_charging','on') }}"
+          should_charge_now: "{{ is_state('binary_sensor.ev_should_charge_now_15m','on') }}"
+          smart_last_update: "{{ states('sensor.smart_last_update') }}"
+          smart_battery_soc: "{{ states('sensor.smart_battery') }}"
+          smart_charging_time_remaining: "{{ states('sensor.smart_charging_time_remaining') }}"
+          smart_data_age_minutes: >-
+            {% set lu = states('sensor.smart_last_update') %}
+            {% if lu in ['unknown','unavailable','none',''] %}
+              unknown
+            {% else %}
+              {% set ts = as_timestamp(as_datetime(lu)) %}
+              {% if ts is none %}
+                unknown
+              {% else %}
+                {{ ((as_timestamp(now()) - ts) / 60) | round(0) | int }}
+              {% endif %}
+            {% endif %}
+
+
+  - sensor:
+      - name: "EV plan 15m (rank)"
+        unique_id: ev_plan_15m_rank
+        icon: mdi:calendar-clock
+        state: >-
+          {% set data = state_attr('sensor.ev_price_slots_15m','data') %}
+          {% if data is not iterable or data|length == 0 %} no-data {% else %} ok {% endif %}
+        attributes:
+          q: >-
+            {% set kw = states('sensor.ev_effective_charge_power_kw') | float(0) %}
+            {% if kw <= 0 %}
+              0
+            {% else %}
+              {% set per_q = kw * 0.25 %}
+
+              {# Deadline window #}
+              {% set dl = states('input_datetime.ev_deadline') %}
+              {% set end_ts = as_timestamp(as_datetime(dl)) if dl not in ['unknown','unavailable','none',''] else none %}
+              {% set now_ts = as_timestamp(now()) %}
+              {% if end_ts is none or end_ts <= now_ts %}
+                0
+              {% else %}
+
+                {# SOC-based progress: from start_soc to target_soc #}
+                {% set soc_now = states('sensor.smart_battery') | float(0) %}
+                {% set soc_start = states('input_number.ev_start_soc') | float(soc_now) %}
+                {% set soc_target = states('input_number.ev_max_soc') | float(100) %}
+
+                {% set denom = (soc_target - soc_start) %}
+                {% set progress = ((soc_now - soc_start) / denom) if denom > 0 else 0 %}
+                {% set progress = [progress, 0] | max %}
+                {% set progress = [progress, 1] | min %}
+
+                {# Remaining energy to target from SOC (you already have this sensor) #}
+                {% set rem_kwh = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+
+                {% if rem_kwh <= 0 %}
+                  0
+                {% else %}
+                  {# Base number of 15m slots needed #}
+                  {% set q_base = (rem_kwh / per_q) | round(0, 'ceil') | int %}
+
+                  {# Buffer like your old logic, but SOC-progress based #}
+                  {% set q_buf = 0 %}
+                  {% if progress >= 0.90 %}
+                    {% set q_buf = 2 %}
+                  {% elif progress >= 0.75 %}
+                    {% set q_buf = 1 %}
+                  {% endif %}
+
+                  {% set q = (q_base + q_buf) | int %}
+
+                  {# 75% checkpoint: are we on schedule? If tight, add extra slots #}
+                  {% if progress >= 0.75 %}
+                    {% set remaining_quarters = ((end_ts - now_ts) / 900) | round(0, 'floor') | int %}
+                    {% set tight = remaining_quarters <= (q_base + 1) %}
+                    {% if tight %}
+                      {# add enough to make it feasible + small safety margin #}
+                      {% set q = q_base + 2 %}
+                    {% endif %}
+                  {% endif %}
+
+                  {{ [q, 0] | max | int }}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+
+          preview_slots: >-
+            {% set data = state_attr('sensor.ev_price_slots_15m','data') %}
+            {% if data is not iterable or data|length == 0 %}
+              []
+            {% else %}
+              {% set kw = states('sensor.ev_effective_charge_power_kw') | float(0) %}
+              {% if kw <= 0 %}
+                []
+              {% else %}
+                {% set per_q = kw * 0.25 %}
+
+                {% set dl = states('input_datetime.ev_deadline') %}
+                {% set end_ts = as_timestamp(as_datetime(dl)) if dl not in ['unknown','unavailable','none',''] else none %}
+                {% set window_start = (as_timestamp(now()) // 900) * 900 %}
+                {% if end_ts is none or end_ts <= window_start %}
+                  []
+                {% else %}
+                  {% set now_ts = as_timestamp(now()) %}
+
+                  {% set soc_now = states('sensor.smart_battery') | float(0) %}
+                  {% set soc_start = states('input_number.ev_start_soc') | float(soc_now) %}
+                  {% set soc_target = states('input_number.ev_max_soc') | float(100) %}
+
+                  {% set denom = (soc_target - soc_start) %}
+                  {% set progress = ((soc_now - soc_start) / denom) if denom > 0 else 0 %}
+                  {% set progress = [progress, 0] | max %}
+                  {% set progress = [progress, 1] | min %}
+
+                  {% set rem_kwh = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+                  {% if rem_kwh <= 0 %}
+                    []
+                  {% else %}
+                    {% set q_base = (rem_kwh / per_q) | round(0, 'ceil') | int %}
+
+                    {% set q_buf = 0 %}
+                    {% if progress >= 0.90 %}
+                      {% set q_buf = 2 %}
+                    {% elif progress >= 0.75 %}
+                      {% set q_buf = 1 %}
+                    {% endif %}
+
+                    {% set q = (q_base + q_buf) | int %}
+
+                    {% if progress >= 0.75 %}
+                      {% set remaining_quarters = ((end_ts - now_ts) / 900) | round(0, 'floor') | int %}
+                      {% set tight = remaining_quarters <= (q_base + 1) %}
+                      {% if tight %}
+                        {% set q = q_base + 2 %}
+                      {% endif %}
+                    {% endif %}
+
+                    {% set future = namespace(items=[]) %}
+                    {% for it in data %}
+                      {% set ts = as_timestamp(it.DateTime) %}
+                      {% if ts is not none and ts >= window_start and ts < end_ts %}
+                        {% set future.items = future.items + [ {
+                          'ts': (ts | int),
+                          'rank': (it.Rank | int(9999)),
+                          'price': (it.PriceWithTax | float(999))
+                        } ] %}
+                      {% endif %}
+                    {% endfor %}
+
+                    {% set N = future.items | length %}
+                    {% if N == 0 %}
+                      []
+                    {% else %}
+                      {% set q2 = [q, N] | min %}
+                      {{ (future.items | sort(attribute='rank'))[:q2] }}
+                    {% endif %}
+                  {% endif %}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+
+          planned_slots: >-
+            {% if is_state('input_boolean.ev_smart_charge_enabled','on') %}
+              {{ state_attr('sensor.ev_plan_15m_rank','preview_slots') }}
+            {% else %}
+              []
+            {% endif %}
+
+
+
+  - binary_sensor:
+      - name: "EV should charge now (15m)"
+        unique_id: ev_should_charge_now_15m
+        state: >-
+          {% set plan = state_attr('sensor.ev_plan_15m_rank','planned_slots') %}
+          {% if plan is not iterable or plan|length == 0 %}
+            false
+          {% else %}
+            {% set slot_ts = (as_timestamp(now()) // 900) * 900 %}
+            {% set starts = plan | map(attribute='ts') | map('int') | list %}
+            {{ slot_ts in starts }}
+          {% endif %}
+
+  - number:
+      - name: "EV target energy (kWh) [UI]"
+        unique_id: ev_target_kwh_ui
+        icon: mdi:battery-plus
+        step: "0.5"
+        min: "0"
+        max: "{{ states('sensor.ev_headroom_to_max_soc_kwh') | float(0) }}"
+        state: "{{ states('input_number.ev_target_kwh') | float(0) }}"
+        set_value:
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.ev_target_kwh
+            data:
+              value: "{{ value | float(0) }}"
+
+  - number:
+      - name: "EV max SOC (%) [UI]"
+        unique_id: ev_max_soc_ui
+        icon: mdi:battery-high
+        step: "1"
+        min: "{{ states('sensor.smart_battery') | float(0) | round(0) }}"
+        max: "100"
+        state: "{{ states('input_number.ev_max_soc') | float(100) }}"
+        set_value:
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.ev_max_soc
+            data:
+              value: >-
+                {% set soc = states('sensor.smart_battery') | float(0) %}
+                {% set v = value | float(0) %}
+                {% if v < soc %}
+                  {{ soc | round(0) }}
+                {% elif v > 100 %}
+                  100
+                {% else %}
+                  {{ v | round(0) }}
+                {% endif %}
+
+  - sensor:
+      - name: "Boiler planned slots 24h"
+        unique_id: boiler_planned_slots_24h
+        state: >-
+          {{ state_attr('sensor.boiler_15m_plan','planned_slots_24h') | default([], true) | count }}
+        attributes:
+          slots: >-
+            {{ state_attr('sensor.boiler_15m_plan','planned_slots_24h') | default([], true) }}
+
+  - sensor:
+      - name: "Boiler heat delivered 1h (kWh)"
+        unique_id: boiler_heat_delivered_1h_kwh
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: measurement
+        state: >-
+          {{ (states('sensor.boiler_heating_active_hours_1h')|float(0)) | round(3) }}
+           
+  - binary_sensor:
+      - name: Bath shower candidate (RH)
+        unique_id: bath_shower_candidate_rh
+        delay_on: "00:01:30"
+        delay_off: "00:06:00"
+        state: >
+          {% set rh = states('sensor.vallox_humidity') | float(0) %}
+          {% set RH_ON  = 32 %}
+          {% set RH_OFF = 28 %}
+          {% if is_state('binary_sensor.bath_shower_candidate_rh','on') %}
+            {{ rh >= RH_OFF }}
+          {% else %}
+            {{ rh >= RH_ON }}
+          {% endif %}
+
+  - sensor:
+      - name: "Boiler heat delivered 24h (kWh)"
+        unique_id: boiler_heat_delivered_24h_kwh
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: measurement
+        state: >-
+          {{ (states('sensor.boiler_heating_active_hours_24h')|float(0)) | round(3) }}
+
+      - name: "Boiler heat delivered 48h (kWh)"
+        unique_id: boiler_heat_delivered_48h_kwh
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: measurement
+        state: >-
+          {{ (states('sensor.boiler_heating_active_hours_48h')|float(0)) | round(3) }}
+
+
+  - binary_sensor:
+      - name: "Boiler heating active (1kW)"
+        unique_id: boiler_heating_active_1kw
+        device_class: power
+        state: >-
+          {{ is_state('switch.ilp_switch_0','on')
+             and (states('sensor.ilp_switch_0_power')|float(0)) >= 900 }}
+
+      - name: "Boiler saturated (no load)"
+        unique_id: boiler_saturated_no_load
+        state: >-
+          {{ is_state('switch.ilp_switch_0','on')
+             and (states('sensor.ilp_switch_0_power')|float(0)) <= 50 }}
+
+  - sensor:
+      - name: "Boiler heat delivered 24h (kWh)"
+        unique_id: boiler_heat_delivered_24h_kwh
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: measurement
+        state: >-
+          {{ (states('sensor.boiler_heating_active_hours_24h')|float(0)) | round(3) }}
+
+      - name: "Boiler heat delivered 48h (kWh)"
+        unique_id: boiler_heat_delivered_48h_kwh
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: measurement
+        state: >-
+          {{ (states('sensor.boiler_heating_active_hours_48h')|float(0)) | round(3) }}
+
+      - name: "Boiler 15m plan"
+        unique_id: boiler_plan_15m
+        icon: mdi:calendar-clock
+        state: >-
+          {% set data = state_attr('sensor.shf_price_15m','data') %}
+          {% if not data %}
+            no-data
+          {% else %}
+            {% set e24 = states('sensor.boiler_heat_delivered_24h_kwh') | float(0) %}
+            {% set e48 = states('sensor.boiler_heat_delivered_48h_kwh') | float(0) %}
+            {% set min24 = states('input_number.boiler_min_energy_24h') | float(0) %}
+            {% set buf24 = states('input_number.boiler_buffer_energy_24h') | float(0) %}
+            {% set max48 = states('input_number.boiler_max_energy_48h') | float(0) %}
+            {% set need_kwh = (min24 + buf24) - e24 %}
+            {% set cap_kwh  = max48 - e48 %}
+
+            {% if need_kwh <= 0 or cap_kwh <= 0 %}
+              q=0 (locked)
+            {% else %}
+              {% set need_q = ((need_kwh / 0.25) | round(0, 'ceil')) | int %}
+              {% set cap_q  = ((cap_kwh  / 0.25) | round(0, 'floor')) | int %}
+              {% set q = [need_q, cap_q] | min %}
+              {% if q <= 0 %}
+                q=0 (none)
+              {% else %}
+                {% set now_ts = as_timestamp(now()) %}
+                {% set end_ts = as_timestamp(now() + timedelta(hours=24)) %}
+                {% set future = namespace(items=[]) %}
+                {% for it in data %}
+                  {% set ts = as_timestamp(it.DateTime) %}
+                  {% if ts is not none and ts >= now_ts and ts < end_ts %}
+                    {% set future.items = future.items + [ {
+                      'dt': it.DateTime,
+                      'price': (it.PriceWithTax | float(999)),
+                      'rank': (it.Rank | int(999))
+                    } ] %}
+                  {% endif %}
+                {% endfor %}
+                {% if (future.items | length) == 0 %}
+                  q={{ q }} (no-future-24h)
+                {% else %}
+                  {% set chosen = (future.items | sort(attribute='price'))[:q] %}
+                  {% set next_dt = chosen | map(attribute='dt') | list | first %}
+                  q={{ q }} next={{ as_datetime(next_dt).strftime('%Y-%m-%d %H:%M') if next_dt else 'n/a' }}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+          {% endif %}
+        attributes:
+          e24_kwh: "{{ states('sensor.boiler_heat_delivered_24h_kwh') | float(0) }}"
+          e48_kwh: "{{ states('sensor.boiler_heat_delivered_48h_kwh') | float(0) }}"
+          target24_kwh: >-
+            {{ (states('input_number.boiler_min_energy_24h')|float(0)) + (states('input_number.boiler_buffer_energy_24h')|float(0)) }}
+          need_kwh: >-
+            {% set e24 = states('sensor.boiler_heat_delivered_24h_kwh') | float(0) %}
+            {% set min24 = states('input_number.boiler_min_energy_24h') | float(0) %}
+            {% set buf24 = states('input_number.boiler_buffer_energy_24h') | float(0) %}
+            {{ (min24 + buf24) - e24 }}
+          cap_kwh: >-
+            {% set e48 = states('sensor.boiler_heat_delivered_48h_kwh') | float(0) %}
+            {% set max48 = states('input_number.boiler_max_energy_48h') | float(0) %}
+            {{ max48 - e48 }}
+          q: >-
+            {% set e24 = states('sensor.boiler_heat_delivered_24h_kwh') | float(0) %}
+            {% set e48 = states('sensor.boiler_heat_delivered_48h_kwh') | float(0) %}
+            {% set min24 = states('input_number.boiler_min_energy_24h') | float(0) %}
+            {% set buf24 = states('input_number.boiler_buffer_energy_24h') | float(0) %}
+            {% set max48 = states('input_number.boiler_max_energy_48h') | float(0) %}
+            {% set need_kwh = (min24 + buf24) - e24 %}
+            {% set cap_kwh  = max48 - e48 %}
+            {% if need_kwh <= 0 or cap_kwh <= 0 %}
+              0
+            {% else %}
+              {% set need_q = ((need_kwh / 0.25) | round(0, 'ceil')) | int %}
+              {% set cap_q  = ((cap_kwh  / 0.25) | round(0, 'floor')) | int %}
+              {{ [need_q, cap_q] | min }}
+            {% endif %}
+          planned_slots_24h: >-
+            {% set data = state_attr('sensor.shf_price_15m','data') %}
+            {% if not data %}
+              []
+            {% else %}
+              {% set e24 = states('sensor.boiler_heat_delivered_24h_kwh') | float(0) %}
+              {% set e48 = states('sensor.boiler_heat_delivered_48h_kwh') | float(0) %}
+              {% set min24 = states('input_number.boiler_min_energy_24h') | float(0) %}
+              {% set buf24 = states('input_number.boiler_buffer_energy_24h') | float(0) %}
+              {% set max48 = states('input_number.boiler_max_energy_48h') | float(0) %}
+              {% set need_kwh = (min24 + buf24) - e24 %}
+              {% set cap_kwh  = max48 - e48 %}
+              {% if need_kwh <= 0 or cap_kwh <= 0 %}
+                []
+              {% else %}
+                {% set need_q = ((need_kwh / 0.25) | round(0, 'ceil')) | int %}
+                {% set cap_q  = ((cap_kwh  / 0.25) | round(0, 'floor')) | int %}
+                {% set q = [need_q, cap_q] | min %}
+                {% set now_ts = as_timestamp(now()) %}
+                {% set end_ts = as_timestamp(now() + timedelta(hours=24)) %}
+                {% set future = namespace(items=[]) %}
+                {% for it in data %}
+                  {% set ts = as_timestamp(it.DateTime) %}
+                  {% if ts is not none and ts >= now_ts and ts < end_ts %}
+                    {% set future.items = future.items + [ {
+                      'start': as_datetime(it.DateTime).strftime('%Y-%m-%d %H:%M'),
+                      'price_with_tax': (it.PriceWithTax | float(999)),
+                      'rank': (it.Rank | int(999))
+                    } ] %}
+                  {% endif %}
+                {% endfor %}
+                {{ (future.items | sort(attribute='price_with_tax'))[:q] }}
+              {% endif %}
+            {% endif %}
+
+  - binary_sensor:
+      - name: "Boiler should be on (15m)"
+        unique_id: boiler_should_be_on_15m
+        state: >
+          {% set series = state_attr('sensor.shf_price_15m', 'data') %}
+          {% if series is not iterable or series|length == 0 %}
+            false
+          {% else %}
+            {% set e24 = states('sensor.boiler_heat_delivered_24h_kwh')|float(0) %}
+            {% set e48 = states('sensor.boiler_heat_delivered_48h_kwh')|float(0) %}
+            {% set hard = states('input_number.boiler_min_energy_24h')|float(2.0) %}
+            {% set buf  = states('input_number.boiler_buffer_energy_24h')|float(0.5) %}
+            {% set max48 = states('input_number.boiler_max_energy_48h')|float(8.0) %}
+            {% set target24 = hard + buf %}
+            {% set need_kwh = target24 - e24 %}
+            {% set cap_kwh = max48 - e48 %}
+            {% if need_kwh <= 0 or cap_kwh <= 0 %}
+              false
+            {% else %}
+              {% set need_q = (need_kwh / 0.25) | round(0,'ceil') | int %}
+              {% set cap_q  = (cap_kwh  / 0.25) | round(0,'floor') | int %}
+              {% set q = [need_q, cap_q] | min %}
+              {% if q <= 0 %}
+                false
+              {% else %}
+                {% set now_ts = now() | as_timestamp %}
+                {% set end_ts = (now() + timedelta(hours=24)) | as_timestamp %}
+                {% set fut = namespace(v=[]) %}
+                {% for item in series %}
+                  {% set ts = as_timestamp(item.DateTime) %}
+                  {% if ts >= now_ts and ts < end_ts %}
+                    {% set fut.v = fut.v + [item] %}
+                  {% endif %}
+                {% endfor %}
+                {% if fut.v|length == 0 %}
+                  false
+                {% else %}
+                  {% set N = fut.v|length %}
+                  {% set q2 = [q, N] | min %}
+                  {% set pairs = namespace(v=[]) %}
+                  {% for i in range(N) %}
+                    {% set p = fut.v[i].PriceWithTax | float(999) %}
+                    {% set pairs.v = pairs.v + [(i, p)] %}
+                  {% endfor %}
+                  {% set chosen = (pairs.v | sort(attribute=1))[:q2] | map(attribute=0) | list %}
+                  {{ 0 in chosen }}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+          {% endif %}
+
+
+  - binary_sensor:
+      - name: "Boiler heating active (1kW)"
+        unique_id: boiler_heating_active_1kw
+        device_class: power
+        state: >-
+          {{ is_state('switch.ilp_switch_0','on')
+             and (states('sensor.ilp_switch_0_power')|float(0)) >= 900 }}
+
+      - name: "Boiler saturated (no load)"
+        unique_id: boiler_saturated_no_load
+        state: >-
+          {{ is_state('switch.ilp_switch_0','on')
+             and (states('sensor.ilp_switch_0_power')|float(0)) <= 50 }}
+
+
+  - sensor:
+
+    - name: "Bath air saturation vapor pressure"
+      unique_id: bath_air_sat_vapor_pressure
+      unit_of_measurement: "hPa"
+      state: >
+        {% set T_s = states('sensor.vallox_extract_air') %}
+        {% if T_s in ['unknown','unavailable'] %}
+          unknown
+        {% else %}
+          {% set T = T_s | float %}
+          {% set es = 6.112 * (2.718281828 ** ((17.62*T)/(243.12+T))) %}
+          {{ es | round(2) }}
+        {% endif %}
+
+    - name: "Bath air VPD"
+      unique_id: bath_air_vpd
+      unit_of_measurement: "hPa"
+      state: >
+        {% set es_air = states('sensor.bath_air_sat_vapor_pressure') %}
+        {% set ea = states('sensor.bath_vapor_pressure') %}
+        {% if es_air in ['unknown','unavailable'] or ea in ['unknown','unavailable'] %}
+          unknown
+        {% else %}
+          {{ (es_air|float - ea|float) | round(2) }}
+        {% endif %}
+
+  - binary_sensor:
+      - name: Bath moisture suspect
+        unique_id: bath_moisture_suspect
+        delay_on: "00:00:20"
+        delay_off: "00:01:00"
+        state: >
+          {% set rh5  = states('sensor.vallox_rh_change_5min') | float(0) %}
+          {{ (rh5 >= 10) }}
+
+
+
+  - binary_sensor:
+      - name: Bath moisture event
+        unique_id: bath_moisture_event
+        delay_on: "00:00:40"
+        delay_off: "00:03:00"
+        state: >
+          {% set rh5  = states('sensor.vallox_rh_change_5min') | float(0) %}
+          {% set rh1  = states('sensor.vallox_rh_change_1min') | float(0) %}
+          {% set fan1 = states('sensor.vallox_fan_change_1min') | float(0) %}
+
+          {% set RH5_TH = 10 %}
+          {% set RH1_TH = 2 %}
+          {% set FAN1_TH = 2 %}
+
+          {% set rh_event = (rh5 >= RH5_TH) and (rh1 >= RH1_TH or fan1 >= FAN1_TH) %}
+
+          {{ rh_event }}
+
+
+
+
+
+  - sensor:
+      - name: "Vallox humidity filtered"
+        unique_id: vallox_humidity_filtered
+        unit_of_measurement: "%"
+        state: >
+          {{ states('sensor.vallox_humidity') | float(0) }}
+
+  - sensor:
+      - name: "Bath dew point"
+        unique_id: bath_dew_point
+        unit_of_measurement: "°C"
+        state: >
+          {% set T_s = states('sensor.vallox_extract_air') %}
+          {% set RH_s = states('sensor.vallox_humidity') %}
+          {% if T_s in ['unknown','unavailable','none',''] or RH_s in ['unknown','unavailable','none',''] %}
+            unknown
+          {% else %}
+            {% set T = T_s | float(none) %}
+            {% set RH_raw = RH_s | float(none) %}
+            {% if T is none or RH_raw is none %}
+              unknown
+            {% else %}
+              {# estä log(0) / log(negatiivinen) #}
+              {% set RH = [RH_raw, 0.1] | max %}
+              {% set a = 17.62 %}
+              {% set b = 243.12 %}
+              {% set gamma = (a * T / (b + T)) + log(RH / 100) %}
+              {{ ((b * gamma) / (a - gamma)) | round(2) }}
+            {% endif %}
+          {% endif %}
+
+
+      - name: "Bath vapor pressure"
+        unique_id: bath_vapor_pressure
+        unit_of_measurement: "hPa"
+        state: >
+          {% set T_s = states('sensor.vallox_extract_air') %}
+          {% set RH_s = states('sensor.vallox_humidity') %}
+          {% if T_s in ['unknown','unavailable'] or RH_s in ['unknown','unavailable'] %}
+            unknown
+          {% else %}
+            {% set T = T_s | float %}
+            {% set RH = RH_s | float %}
+            {% set es = 6.112 * (2.718281828 ** ((17.62*T)/(243.12+T))) %}
+            {{ (es * RH / 100) | round(2) }}
+          {% endif %}
+
+      - name: "Floor sat vapor pressure"
+        unique_id: floor_sat_vapor_pressure
+        unit_of_measurement: "hPa"
+        state: >
+          {% set Tf_s = states('sensor.tallin_kylpyhuone_external_sensor') %}
+          {% if Tf_s in ['unknown','unavailable'] %}
+            unknown
+          {% else %}
+            {% set Tf = Tf_s | float %}
+            {% set es = 6.112 * (2.718281828 ** ((17.62*Tf)/(243.12+Tf))) %}
+            {{ es | round(2) }}
+          {% endif %}
+
+      - name: "Floor VPD gain +3C"
+        unique_id: floor_vpd_gain_3c
+        unit_of_measurement: "hPa"
+        state: >
+          {% set Tf_s = states('sensor.tallin_kylpyhuone_external_sensor') %}
+          {% if Tf_s in ['unknown','unavailable'] %}
+            unknown
+          {% else %}
+            {% set Tf = Tf_s | float %}
+            {% set T2 = Tf + 3 %}
+            {% set es1 = 6.112 * (2.718281828 ** ((17.62*Tf)/(243.12+Tf))) %}
+            {% set es2 = 6.112 * (2.718281828 ** ((17.62*T2)/(243.12+T2))) %}
+            {{ (es2 - es1) | round(2) }}
+          {% endif %}
+
+      - name: "Floor VPD now"
+        unique_id: floor_vpd_now
+        unit_of_measurement: "hPa"
+        state: >
+          {% set es_floor = states('sensor.floor_sat_vapor_pressure') %}
+          {% set ea = states('sensor.bath_vapor_pressure') %}
+          {% if es_floor in ['unknown','unavailable'] or ea in ['unknown','unavailable'] %}
+            unknown
+          {% else %}
+            {{ (es_floor|float - ea|float) | round(2) }}
+          {% endif %}
+
+
+  - binary_sensor:
+      - name: "Floor boost worth it"
+        unique_id: floor_boost_worth_it
+        delay_on: "00:01:30"
+        delay_off: "00:08:00"
+        state: >
+          {% set vpd_s  = states('sensor.bath_air_vpd') %}
+          {% set gain_s = states('sensor.floor_vpd_gain_3c') %}
+          {% if vpd_s in ['unknown','unavailable','none',''] or gain_s in ['unknown','unavailable','none',''] %}
+            false
+          {% else %}
+            {% set vpd  = vpd_s  | float(0) %}
+            {% set gain = gain_s | float(0) %}
+
+            {# boost vain jos ilma ei jo kuivaa tehokkaasti #}
+            {% set vpd_low = (vpd <= 4.0) %}
+
+            {# boost tuo merkittävän absoluuttisen lisän #}
+            {% set abs_ok = (gain >= 1.5) %}
+
+            {{ vpd_low and abs_ok }}
+          {% endif %}
+
+
+
+
+      # Näkyvä tila graafiin: onko boosti käynnissä (skripti asettaa)
+      - name: "Floor boost active"
+        state: "{{ is_state('input_boolean.shower_floor_boost_active','on') }}"
+
+
+
+
+
+  - sensor:
+      - name: Total Electricity Consumption
+        unique_id: total_electricity_consumption_kwh
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        state: >
+          {% set ids = [
+            'sensor.ajatettu_lampomatto_energy',
+            'sensor.autolle_energy',
+            'sensor.eteisen_patteri_switch_0_energy',
+            'sensor.energiamittari_ikea_energy',
+            'sensor.keittion_patteri_switch_0_energy',
+            'sensor.kh_et_mh_kulutus_energy',
+            'sensor.kuivausrumpu_pakastin_switch_0_energy',
+            'sensor.makuuhuone_patteri_switch_0_energy',
+            'sensor.pulputit_lammitys_energy',
+            'sensor.kanalalampo_energy',
+            'sensor.smart_thermostat_2112132467818190863348e1e9815d11_energy',
+            'sensor.smart_thermostat_2112134882648690863348e1e9815f30_energy',
+            'sensor.smart_thermostat_2112136738677590863348e1e9815dfc_energy',
+            'sensor.smart_thermostat_2206241709878160120148e1e999c233_energy',
+            'sensor.varaaja_energy',
+            'sensor.varaston_valo_energy',
+            'sensor.zag063912_energy_meter',
+            'sensor.ilptalli_mittari',
+            'sensor.jussinhuone_mittari',
+            'sensor.annikanhuone_mittari'
+          ] %}
+          {{ ids
+              | map('states')
+              | map('float', default=0)
+              | sum
+              | round(3) }}
+
+
+  - binary_sensor:
+      - name: Boiler should be on (15m)
+        unique_id: boiler_should_be_on_15m
+        state: >
+          {% set series = state_attr('sensor.shf_price_15m', 'data') %}
+          {% if series is not iterable or series|length == 0 %}
+            false
+          {% else %}
+            {% set e24 = states('sensor.boiler_heat_delivered_24h_kwh')|float(0) %}
+            {% set e48 = states('sensor.boiler_heat_delivered_48h_kwh')|float(0) %}
+            {% set hard = states('input_number.boiler_min_energy_24h')|float(2.0) %}
+            {% set buf  = states('input_number.boiler_buffer_energy_24h')|float(0.5) %}
+            {% set max48 = states('input_number.boiler_max_energy_48h')|float(8.0) %}
+
+            {% set target24 = hard + buf %}
+            {% set need_kwh = target24 - e24 %}
+            {% set cap_kwh = max48 - e48 %}
+
+            {% if need_kwh <= 0 or cap_kwh <= 0 %}
+              false
+            {% else %}
+              {# 1 kW => 1 vartti = 0.25 kWh #}
+              {% set need_q = (need_kwh / 0.25) | round(0,'ceil') | int %}
+              {% set cap_q  = (cap_kwh  / 0.25) | round(0,'floor') | int %}
+              {% set q = [need_q, cap_q] | min %}
+              {% if q <= 0 %}
+                false
+              {% else %}
+                {% set now_ts = now() | as_timestamp %}
+                {% set end_ts = (now() + timedelta(hours=24)) | as_timestamp %}
+                {% set fut = namespace(v=[]) %}
+                {% for item in series %}
+                  {% set ts = as_timestamp(item.DateTime) %}
+                  {% if ts >= now_ts and ts < end_ts %}
+                    {% set fut.v = fut.v + [item] %}
+                  {% endif %}
+                {% endfor %}
+                {% if fut.v|length == 0 %}
+                  false
+                {% else %}
+                  {% set N = fut.v|length %}
+                  {% set q2 = [q, N] | min %}
+                  {% set pairs = namespace(v=[]) %}
+                  {% for i in range(N) %}
+                    {% set p = fut.v[i].PriceWithTax | float(999) %}
+                    {% set pairs.v = pairs.v + [(i, p)] %}
+                  {% endfor %}
+                  {% set chosen = (pairs.v | sort(attribute=1))[:q2] | map(attribute=0) | list %}
+                  {{ 0 in chosen }}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+          {% endif %}
+
+  - sensor:
+      - name: "EV price debug (schema)"
+        unique_id: ev_price_debug_schema
+        icon: mdi:bug-outline
+        state: >-
+          {% set data = state_attr('sensor.ev_price_slots_15m','data') %}
+          {% if data is not iterable or data|length == 0 %}
+            no-data
+          {% else %}
+            {% set it = data[0] %}
+            {% set keys = it.keys() | list if it is mapping else [] %}
+            keys={{ keys | join(',') }}
+          {% endif %}
+
+input_boolean:
+  ev_takeover_armed:
+    name: EV takeover armed
+    icon: mdi:shield-lock
+    initial: true
+    
+  ev_smart_charge_enabled:
+    name: EV smart charge enabled
+    icon: mdi:ev-station
+
+  ev_charge_session_active:
+    name: EV charge session active
+    icon: mdi:flag-checkered
+
+  boiler_force_heat:
+    name: Boiler force heat (failsafe)
+    initial: false
+
+  shower_floor_boost_active:
+    name: Shower floor boost active
+
+input_datetime:
+  ev_deadline:
+    name: EV deadline
+    has_date: true
+    has_time: true
+
+input_text:
+  bath_boost_debug_snapshot:
+    name: Bath boost debug snapshot
+    max: 255
+
+
+input_number:
+  ev_start_soc:
+    name: EV start SOC (%)
+    min: 0
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    icon: mdi:battery-outline
+
+  ev_max_soc:
+    name: EV max SOC (%)
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:battery-high
+    
+  ev_campaign_cost_eur:
+    name: EV campaign cost (EUR)
+    min: 0
+    max: 200000
+    step: 0.01
+    unit_of_measurement: EUR
+    icon: mdi:cash
+
+  boiler_failsafe_fill_kwh:
+    name: Boiler failsafe fill target (24h)
+    min: 0
+    max: 12
+    step: 0.25
+    unit_of_measurement: kWh
+    initial: 4.0
+
+  ev_target_kwh:
+    name: EV target energy (kWh)
+    min: 0
+    max: 62
+    step: 0.5
+    unit_of_measurement: kWh
+    icon: mdi:battery-plus
+
+  ev_assumed_charge_kw:
+    name: EV assumed charge power (kW)
+    min: 0.5
+    max: 11
+    step: 0.1
+    unit_of_measurement: kW
+    icon: mdi:flash
+
+
+  ev_session_start_kwh:
+    name: EV session start (kWh meter)
+    min: 0
+    max: 200000
+    step: 0.001
+    unit_of_measurement: kWh
+    icon: mdi:counter    
+
+  ev_car_session_start_kwh:
+    name: EV car session start (kWh)
+    min: 0
+    max: 200000
+    step: 0.001
+    unit_of_measurement: kWh
+    icon: mdi:counter
+
+
+  boiler_min_energy_24h:
+    name: Boiler min energy 24h (hard)
+    min: 0
+    max: 12
+    step: 0.25
+    unit_of_measurement: kWh
+    initial: 2.0
+
+  boiler_buffer_energy_24h:
+    name: Boiler buffer energy 24h (soft)
+    min: 0
+    max: 6
+    step: 0.25
+    unit_of_measurement: kWh
+    initial: 0.5
+
+  boiler_cheap_rank_limit:
+    name: Boiler cheap rank limit (1..96)
+    min: 1
+    max: 96
+    step: 1
+    initial: 12
+
+  boiler_max_energy_48h:
+    name: Boiler max energy 48h
+    min: 0
+    max: 24
+    step: 0.25
+    unit_of_measurement: kWh
+    initial: 8.0
+
+  boiler_max_hours_48h:
+    name: Boiler max ON hours 48h
+    min: 0
+    max: 24
+    step: 0.25
+    unit_of_measurement: h
+    initial: 8.0
+
+  shower_floor_prev_temp:
+    name: Shower floor previous temp
+    min: 5
+    max: 35
+    step: 0.5
+    mode: box
+
+utility_meter:
+  ev_zaptec_energy_15m_kwh:
+    name: EV Zaptec energy 15m (kWh)
+    unique_id: ev_zaptec_energy_15m_kwh
+    source: sensor.zag063912_session_total_charge
+    cycle: quarter-hourly
+
+
+
 sensor:
-  - platform: time_date
-    display_options:
-      - 'time'
-      - 'date'
+  - platform: integration
+    source: sensor.smart_charging_power
+    name: EV energy in (car, kWh)
+    unit_prefix: k
+    round: 3
+    method: left
 
-# Example binary sensors
-binary_sensor:
-  - platform: workday
-    country: US
+  - platform: rest
+    resource: https://api.spot-hinta.fi/TodayAndDayForward?HomeAssistant15Min=true
+    name: EV price slots 15m
+    unique_id: ev_price_slots_15m
+    scan_interval: 604800
+    value_template: "OK"
+    json_attributes:
+      - data
+
+
+
+
+  - platform: statistics
+    name: Vallox fan baseline 30min
+    entity_id: sensor.vallox_fan_speed
+    state_characteristic: median
+    max_age:
+      minutes: 30
+
+
+  - platform: history_stats
+    name: boiler_heating_active_hours_24h
+    entity_id: binary_sensor.boiler_heating_active_1kw
+    state: "on"
+    type: time
+    end: "{{ now() }}"
+    duration:
+      hours: 24
+
+  - platform: history_stats
+    name: boiler_heating_active_hours_48h
+    entity_id: binary_sensor.boiler_heating_active_1kw
+    state: "on"
+    type: time
+    end: "{{ now() }}"
+    duration:
+      hours: 48
+
+
+
+  - platform: statistics
+    name: Vallox RH change 5min
+    entity_id: sensor.vallox_humidity
+    state_characteristic: change
+    max_age:
+      minutes: 5
+
+  - platform: statistics
+    name: Vallox fan change 5min
+    entity_id: sensor.vallox_fan_speed
+    state_characteristic: change
+    max_age:
+      minutes: 5
+
+
+  - platform: statistics
+    name: Vallox RH change 1min
+    entity_id: sensor.vallox_humidity
+    state_characteristic: change
+    max_age:
+      minutes: 1
+
+  - platform: statistics
+    name: Vallox fan change 1min
+    entity_id: sensor.vallox_fan_speed
+    state_characteristic: change
+    max_age:
+      minutes: 1
+
+  - platform: statistics
+    name: vallox_humidity_smooth
+    entity_id: sensor.vallox_humidity_filtered
+    state_characteristic: mean
+    max_age:
+      minutes: 3
+
+  - platform: rest
+    name: shf_price_15m
+    unique_id: shf_price_15m
+    resource: "https://api.spot-hinta.fi/TodayAndDayForward?HomeAssistant15Min=true"
+    method: GET
+    scan_interval: 900
+    value_template: "OK"
+    json_attributes:
+      - data
+
+
+
+  - platform: history_stats
+    name: boiler_on_hours_24h
+    entity_id: switch.ilp_switch_0
+    state: "on"
+    type: time
+    end: "{{ now() }}"
+    duration:
+      hours: 24
+
+  - platform: history_stats
+    name: boiler_on_hours_48h
+    entity_id: switch.ilp_switch_0
+    state: "on"
+    type: time
+    end: "{{ now() }}"
+    duration:
+      hours: 48
+
+  - platform: nordpool
+    VAT: True
+    currency: "EUR"
+    price_in_cents: false
+    low_price_cutoff: 0.95
+    region: "FI"
+    precision: 4
+    price_type: kWh
+    additional_costs: >-
+      {% set s = {
+        "siirto": 0.0598,
+        "komissio": 0.0038
+      } %}
+      {{ (s.siirto + s.komissio) | float }}
+
+  - platform: powercalc
+    entity_id: climate.smart_thermostat_2112132467818190863348e1e9815d11
+    fixed:
+      power: 0
+      states_power:
+        hvac_action|heating: 1390
+
+  - platform: powercalc
+    entity_id: climate.smart_thermostat_2112136738677590863348e1e9815dfc
+    fixed:
+      power: 0
+      states_power:
+        hvac_action|heating: 1165
+
+  - platform: powercalc
+    entity_id: climate.smart_thermostat_2112134882648690863348e1e9815f30
+    fixed:
+      power: 0
+      states_power:
+        hvac_action|heating: 2500
+
+  - platform: powercalc
+    entity_id: climate.smart_thermostat_2206241709878160120148e1e999c233
+    fixed:
+      power: 0
+      states_power:
+        hvac_action|heating: 260
+
+  - platform: template
+    sensors:
+      hinta_senteissa:
+        unit_of_measurement: c/kWh
+        value_template: >
+          {{ ((state_attr('sensor.nordpool_kwh_fi_eur_4_095_024', 'current_price') * 100)) | round(3) }}
+
+climate:
+  - platform: dual_smart_thermostat
+    name: Makuuhuone termostaatti
+    unique_id: 9003
+    heater: switch.makuuhuone_patteri_switch_0
+    target_sensor: sensor.mittari_temperature
+    initial_hvac_mode: "heat"
+
+  - platform: dual_smart_thermostat
+    name: Eteinen termostaatti
+    heater: switch.eteisen_patteri_switch_0
+    target_sensor: sensor.eteinen_lampotila_temperature
+    initial_hvac_mode: "heat"
+
+  - platform: dual_smart_thermostat
+    name: Keittion termostaatti
+    heater: switch.keittion_patteri_switch_0
+    target_sensor: sensor.keittion_lampotila_temperature
+    initial_hvac_mode: "heat"
+
+rest_command:
+  abrp:
+    url: https://api.iternio.com/1/tlm/send
+    method: post
+    headers:
+      Authorization: "APIKEY {{ api_key }}"
+
+calendar:
+  - platform: caldav
+    url: "https://caldav.icloud.com"
+    username: "jvaahtikari@icloud.com"
+    password: !secret jussi_caldav_password
+    calendars:
+      - "Jussin työt ja menot"

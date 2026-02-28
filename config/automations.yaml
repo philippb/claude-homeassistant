@@ -1,51 +1,593 @@
-# Example Home Assistant Automations
-# These are example automations showcasing common patterns
+- id: '1770043343712'
+  alias: Lähetä auton tiedot ABRP:lle
+  description: ''
+  triggers:
+  - entity_id: sensor.smart_last_update
+    trigger: state
+  actions:
+  - data:
+      token: b1f5d297-35a9-4797-9c3e-cc6fe1b30887
+      api_key: f57bde45-fa6f-4ef0-bf1a-d81581a9a0fa
+      tlm: "{\"utc\": {{ as_timestamp(states('sensor.smart_last_update')) | int }},\n
+        \"soc\": {{ states('sensor.smart_battery') | float }}}\n"
+    action: rest_command.abrp
+  mode: single
+- id: boiler_control_15m_optimized
+  alias: Boiler control (15m optimized)
+  description: Ohjaa varaajaa valittujen 15 min hintaslottejen perusteella.
+  mode: single
+  triggers:
+  - trigger: time_pattern
+    minutes: /15
+    seconds: 0
+  - trigger: state
+    entity_id: sensor.shf_price_15m
+  - trigger: homeassistant
+    event: start
+  conditions:
+  - condition: state
+    entity_id: input_boolean.boiler_force_heat
+    state: 'off'
+  actions:
+  - variables:
+      should_on: '{{ is_state(''binary_sensor.boiler_should_be_on_15m'',''on'') }}'
+      is_on: '{{ is_state(''switch.ilp_switch_0'',''on'') }}'
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ should_on and not is_on }}'
+      sequence:
+      - action: switch.turn_on
+        target:
+          entity_id: switch.ilp_switch_0
+    - conditions:
+      - condition: template
+        value_template: '{{ (not should_on) and is_on }}'
+      sequence:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.ilp_switch_0
+- id: boiler_force_heat_on
+  alias: Boiler force heat ON
+  description: Failsafe 1 - pakota varaaja lämmittämään (huolto tms.)
+  mode: single
+  triggers:
+  - trigger: state
+    entity_id: input_boolean.boiler_force_heat
+    to: 'on'
+  actions:
+  - action: switch.turn_on
+    target:
+      entity_id: switch.ilp_switch_0
+    data: {}
+- id: boiler_force_heat_off_when_full
+  alias: Boiler force heat OFF when full
+  description: Failsafe 1 - lopeta pakkolataus kun vastus ei enää kuluta (varaaja
+    termostaatilla täynnä)
+  mode: single
+  triggers:
+  - trigger: numeric_state
+    entity_id: sensor.ilp_switch_0_power
+    below: 10
+    for:
+      minutes: 10
+  conditions:
+  - condition: state
+    entity_id: input_boolean.boiler_force_heat
+    state: 'on'
+  - condition: state
+    entity_id: switch.ilp_switch_0
+    state: 'on'
+  actions:
+  - action: switch.turn_off
+    target:
+      entity_id: switch.ilp_switch_0
+    data: {}
+  - action: input_boolean.turn_off
+    target:
+      entity_id: input_boolean.boiler_force_heat
+    data: {}
+- id: boiler_failsafe_no_prices_night_window
+  alias: Boiler failsafe 2 - no prices -> heat 01-05
+  description: Jos hintadata puuttuu, lämmitä yöllä kunnes minimitäyttö saavutettu.
+  mode: single
+  triggers:
+  - trigger: time_pattern
+    minutes: 0
+  conditions:
+  - condition: state
+    entity_id: input_boolean.boiler_force_heat
+    state: 'off'
+  actions:
+  - variables:
+      e24: '{{ states(''sensor.boiler_heat_delivered_24h_kwh'') | float(0) }}'
+      e48: '{{ states(''sensor.boiler_heat_delivered_48h_kwh'') | float(0) }}'
+      fill: '{{ states(''input_number.boiler_failsafe_fill_kwh'') | float(4.0) }}'
+      max48: '{{ states(''input_number.boiler_max_energy_48h'') | float(8.0) }}'
+      cap_ok: '{{ (max48 - e48) > 0 }}'
+      has_data: "{{ state_attr('sensor.shf_price_15m','data') is iterable\n   and
+        (state_attr('sensor.shf_price_15m','data') | length > 0) }}\n"
+      last_u: '{{ as_timestamp(states.sensor.shf_price_15m.last_updated) }}'
+      fresh: '{{ (as_timestamp(now()) - last_u) < 86400 }}'
+      prices_ok: '{{ has_data and fresh }}'
+      in_window: '{{ now().hour >= 1 and now().hour < 5 }}'
+      want_heat: '{{ (not prices_ok) and in_window and cap_ok and (e24 < fill) }}'
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ want_heat }}'
+      sequence:
+      - action: switch.turn_on
+        target:
+          entity_id: switch.ilp_switch_0
+    default:
+    - action: switch.turn_off
+      target:
+        entity_id: switch.ilp_switch_0
+- id: '1770934409233'
+  alias: Aamulähtö → lattialämmön boost
+  triggers:
+  - minutes: /1
+    trigger: time_pattern
+  actions:
+  - target:
+      entity_id: calendar.jussin_tyot_ja_menot
+    data:
+      start_date_time: '{{ now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        }}'
+      end_date_time: '{{ now().replace(hour=12, minute=0, second=0, microsecond=0).isoformat()
+        }}'
+    response_variable: cal
+    action: calendar.get_events
+  - variables:
+      events: '{{ cal.get(''calendar.jussin_tyot_ja_menot'', {}).get(''events'', [])
+        }}'
+      re_car: (^|\b)auto\w*(\b|$)
+      re_train: (^|\b)juna\w*(\b|$)
+      re_helsinki_towards: (^|\b)(helsinki\w*|helsing(?!ist[äa])\w*)(\b|$)
+      next_departure: "{% set ns = namespace(t=None, offset=0) %} {% for e in events
+        %}\n  {% set s = (e.summary | default('')) | lower %}\n  {% set d = (e.description
+        | default('')) | lower %}\n  {% set text = s ~ ' ' ~ d %}\n\n  {% set is_car
+        = (text | regex_search(re_car)) is not none %}\n  {% set is_train = (text
+        | regex_search(re_train)) is not none %}\n  {% set is_hki = (text | regex_search(re_helsinki_towards))
+        is not none %}\n\n  {% if is_car or is_train or is_hki %}\n    {% set start_raw
+        = e.start if e.start is defined else e.start_date_time %}\n    {% if start_raw
+        %}\n      {% set dt = as_datetime(start_raw) %}\n      {% if ns.t is none
+        or dt < ns.t %}\n        {% set ns.t = dt %}\n        {% set ns.offset = 3600
+        if is_car else 5400 %}\n      {% endif %}\n    {% endif %}\n  {% endif %}\n{%
+        endfor %} {{ {'time': ns.t, 'offset': ns.offset} }}"
+      target_time: "{% if next_departure.time %}\n  {{ as_datetime(next_departure.time)
+        - timedelta(seconds=next_departure.offset) }}\n{% else %}\n  {{ none }}\n{%
+        endif %}"
+      ran_today: '{{ this.last_triggered is not none and this.last_triggered.date()
+        == now().date() }}'
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: "{{\n  (not ran_today)\n  and target_time is not none\n  and
+          now() >= as_datetime(target_time)\n  and now() < (as_datetime(target_time)
+          + timedelta(minutes=1))\n}}"
+      sequence:
+      - data:
+          duration: 01:30:00
+        action: script.suihku_lattialammon_boost_3_ja_palauta
+  mode: single
+- id: '1770971544540'
+  alias: TESTI – aja lattialämmön boost aina
+  description: ''
+  triggers: []
+  actions:
+  - data:
+      duration: 00:00:20
+    action: script.suihku_lattialammon_boost_3_ja_palauta
+  mode: single
+- id: '1770971992642'
+  alias: TESTI Junamatka-haku → boost nyt
+  description: ''
+  triggers: []
+  actions:
+  - target:
+      entity_id: calendar.jussin_tyot_ja_menot
+    data:
+      start_date_time: '{{ now().isoformat() }}'
+      end_date_time: '{{ (now() + timedelta(hours=12)).isoformat() }}'
+    response_variable: cal
+    action: calendar.get_events
+  - variables:
+      events: '{{ cal.get(''calendar.jussin_tyot_ja_menot'', {}).get(''events'', [])
+        }}'
+      has_train: '{% set texts = events | map(attribute=''summary'') | list %} {%
+        set descs = events | map(attribute=''description'') | list %} {% set joined
+        = (texts + descs) | join('' '') | lower %} {{ joined | regex_search(''(juna|helsin)'')
+        is not none }}
 
-- id: 'example_motion_lights'
-  alias: 'Example: Motion Activated Lights'
-  description: 'Turn on lights when motion is detected'
-  trigger:
-    - platform: state
-      entity_id: binary_sensor.living_room_motion
-      to: 'on'
-  condition:
+        '
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ has_train }}'
+      sequence:
+      - data:
+          duration: 00:00:20
+        action: script.suihku_lattialammon_boost_3_ja_palauta
+  mode: single
+- id: bath_moisture_confirmed_boost
+  alias: Bath → Floor boost on moisture event
+  mode: single
+  triggers:
+  - trigger: state
+    entity_id: binary_sensor.bath_moisture_event
+    to: 'on'
+  conditions:
+  - condition: state
+    entity_id: input_boolean.shower_floor_boost_active
+    state: 'off'
+  - condition: state
+    entity_id: binary_sensor.floor_boost_worth_it
+    state: 'on'
+  actions:
+  - action: script.suihku_lattialammon_boost_3_ja_palauta
+    data:
+      duration: 01:00:00
+- id: bath_moisture_event_debug
+  alias: Bath → DEBUG snapshot when moisture event
+  mode: queued
+  triggers:
+  - entity_id: binary_sensor.bath_moisture_event
+    to: 'on'
+    trigger: state
+  actions:
+  - action: script.bath_boost_debug_snapshot
+- id: bath_floor_boost_debug
+  alias: Bath → DEBUG snapshot when boost starts
+  mode: queued
+  triggers:
+  - entity_id: input_boolean.shower_floor_boost_active
+    to: 'on'
+    trigger: state
+  actions:
+  - action: script.bath_boost_debug_snapshot
+- id: ev_price_slots_15m_refresh
+  alias: EV price slots 15m refresh
+  mode: single
+  triggers:
+  - trigger: time_pattern
+    minutes: '0'
+  - trigger: homeassistant
+    event: start
+  actions:
+  - action: homeassistant.update_entity
+    target:
+      entity_id: sensor.ev_price_slots_15m
+- id: ev_enabled_capture_start_kwh
+  alias: EV enabled → capture start kWh (validated)
+  mode: single
+  triggers:
+  - trigger: state
+    entity_id: input_boolean.ev_smart_charge_enabled
+    to: 'on'
+  conditions:
+  - condition: template
+    value_template: '{{ states(''sensor.zag063912_energy_meter'') not in [''unknown'',''unavailable'',''none'','''']
+      }}
+
+      '
+  actions:
+  - action: input_number.set_value
+    target:
+      entity_id: input_number.ev_session_start_kwh
+    data:
+      value: '{{ states(''sensor.zag063912_energy_meter'') | float }}'
+- id: ev_enabled_takeover_reconcile
+  alias: EV enabled → takeover Zaptec control (reconcile now)
+  mode: single
+  enabled: false  # DISABLED: superseded by ev_control_effective_master
+  triggers:
+  - trigger: state
+    entity_id: input_boolean.ev_smart_charge_enabled
+  actions:
+  - variables:
+      charging_switch: '{{ is_state(''switch.zag063912_charging'',''on'') }}'
+      charger_mode: '{{ states(''sensor.zag063912_charger_mode'') }}'
+      charging_active: '{{ charging_switch or charger_mode == ''connected_charging'' }}'
+  - choose:
+    - conditions:
+      - condition: state
+        entity_id: input_boolean.ev_smart_charge_enabled
+        state: 'on'
+      sequence:
+      - choose:
+        - conditions:
+          - condition: state
+            entity_id: binary_sensor.ev_should_charge_now_15m
+            state: 'on'
+          sequence:
+          - condition: template
+            value_template: '{{ not charging_active }}'
+          - action: button.press
+            target:
+              entity_id: button.zag063912_resume_charging
+        default:
+        - condition: template
+          value_template: '{{ charging_active }}'
+        - action: button.press
+          target:
+            entity_id: button.zag063912_stop_charging
+    default:
+    - stop: Disabled -> no control
+- id: ev_charge_control_15m_rank_v2
+  alias: EV charge control (15m rank) v2
+  mode: restart
+  enabled: false  # DISABLED: superseded by ev_control_effective_master
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.ev_should_charge_now_15m
+
+    - trigger: state
+      entity_id: sensor.zag063912_charger_mode
+
+    - trigger: state
+      entity_id: input_boolean.ev_smart_charge_enabled
+      to: "on"
+
+    - trigger: homeassistant
+      event: start
+
+  conditions:
     - condition: state
-      entity_id: sun.sun
-      state: 'below_horizon'
-  action:
-    - service: light.turn_on
-      target:
-        entity_id: light.living_room_main
-      data:
-        brightness_pct: 75
+      entity_id: input_boolean.ev_smart_charge_enabled
+      state: "on"
 
-- id: 'example_schedule_lights'
-  alias: 'Example: Evening Light Schedule'
-  description: 'Turn on evening lights at sunset'
-  trigger:
-    - platform: sun
-      event: sunset
-      offset: "-00:30:00"
-  action:
-    - service: light.turn_on
-      target:
-        area_id: living_room
-      data:
-        brightness_pct: 50
+  actions:
+    - variables:
+        charging_switch: "{{ is_state('switch.zag063912_charging','on') }}"
+        charger_mode: "{{ states('sensor.zag063912_charger_mode') }}"
+        # "Actually charging" is best inferred from charger_mode
+        charging_active: "{{ charging_switch or charger_mode == 'connected_charging' }}"
+        should_now: "{{ is_state('binary_sensor.ev_should_charge_now_15m','on') }}"
 
-- id: 'example_device_notification'
-  alias: 'Example: Low Battery Notification'
-  description: 'Notify when device battery is low'
-  trigger:
-    - platform: numeric_state
-      entity_id: sensor.phone_battery_level
-      below: 20
-  condition:
-    - condition: time
-      after: '09:00:00'
-      before: '22:00:00'
-  action:
-    - service: notify.mobile_app
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ should_now }}"
+          sequence:
+            # Start/resume only if not already charging
+            - condition: template
+              value_template: "{{ not charging_active }}"
+            - action: button.press
+              target:
+                entity_id: button.zag063912_resume_charging
+
+      default:
+        # Stop only if currently charging/active
+        - condition: template
+          value_template: "{{ charging_active }}"
+        - action: button.press
+          target:
+            entity_id: button.zag063912_stop_charging
+- id: ev_target_kwh_clamp_to_soc_limit
+  alias: EV UI guard → clamp target kWh to SOC limit
+  description: Clamp EV target kWh so it cannot exceed remaining capacity (SOC→100%).
+  mode: single
+  triggers:
+  - trigger: state
+    entity_id:
+    - input_number.ev_target_kwh
+    - sensor.smart_battery
+    - sensor.ev_headroom_to_max_soc_kwh
+  actions:
+  - variables:
+      target: '{{ states(''input_number.ev_target_kwh'') | float(0) }}'
+      limit_s: '{{ states(''sensor.ev_headroom_to_max_soc_kwh'') }}'
+      limit: "{% if limit_s in ['unknown','unavailable','none',''] %}\n  -1\n{% else
+        %}\n  {{ limit_s | float(-1) }}\n{% endif %}"
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ limit >= 0 and target > limit }}'
+      sequence:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.ev_target_kwh
+        data:
+          value: '{# round DOWN to step 0.5 kWh (input_number step=0.5) #} {% set
+            step = 0.5 %} {% set v = (limit / step) | round(0, ''floor'') * step %}
+            {{ [v, 0] | max | round(2) }}'
+- id: ev_deadline_guard_no_past
+  alias: EV UI guard → prevent past deadline
+  mode: single
+  triggers:
+  - trigger: state
+    entity_id: input_datetime.ev_deadline
+  actions:
+  - variables:
+      dl_s: '{{ states(''input_datetime.ev_deadline'') }}'
+      dl_ts: "{% if dl_s in ['unknown','unavailable','none',''] %}\n  none\n{% else
+        %}\n  {{ as_timestamp(as_datetime(dl_s)) }}\n{% endif %}"
+      now_ts: '{{ as_timestamp(now()) }}'
+      min_ok_ts: '{{ now_ts + 15*60 }}'
+      next_q_ts: '{# round up to next 15-min boundary #} {% set t = (min_ok_ts | int)
+        %} {{ ((t // 900) + 1) * 900 }}'
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ dl_ts is not none and dl_ts < min_ok_ts }}'
+      sequence:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.ev_deadline
+        data:
+          timestamp: '{{ next_q_ts }}'
+- id: ev_campaign_cost_reset_on_session_start
+  alias: EV campaign → reset cost on session start
+  mode: single
+  triggers:
+  - trigger: state
+    entity_id: input_boolean.ev_charge_session_active
+    to: 'on'
+  actions:
+  - action: input_number.set_value
+    target:
+      entity_id: input_number.ev_campaign_cost_eur
+    data:
+      value: 0
+- id: ev_campaign_cost_accumulate_15m
+  alias: EV campaign → accumulate cost every 15m
+  mode: single
+  triggers:
+  - trigger: time_pattern
+    minutes: /15
+    seconds: 1
+  conditions:
+  - condition: state
+    entity_id: input_boolean.ev_charge_session_active
+    state: 'on'
+  actions:
+  - variables:
+      cur: '{{ states(''input_number.ev_campaign_cost_eur'') | float(0) }}'
+      add: '{{ states(''sensor.ev_cost_this_15m_eur'') | float(0) }}'
+  - action: input_number.set_value
+    target:
+      entity_id: input_number.ev_campaign_cost_eur
+    data:
+      value: '{{ (cur + add) | round(2) }}'
+
+- id: ev_plug_in_takeover_gate
+  alias: EV plug-in → takeover gate (stop unless slot now)
+  mode: single
+  triggers:
+  - trigger: state
+    entity_id: sensor.zag063912_charger_mode
+    from:
+    - disconnected
+    - unknown
+    to: connected_requesting
+  - trigger: state
+    entity_id: sensor.zag063912_charger_mode
+    from:
+    - disconnected
+    - unknown
+    to: connected_charging
+  conditions:
+  - condition: state
+    entity_id: input_boolean.ev_smart_charge_enabled
+    state: 'on'
+  - condition: state
+    entity_id: input_boolean.ev_takeover_armed
+    state: 'on'
+  actions:
+  - action: input_boolean.turn_off
+    target:
+      entity_id: input_boolean.ev_takeover_armed
+  - choose:
+    - conditions:
+      - condition: state
+        entity_id: binary_sensor.ev_should_charge_now_15m_effective
+        state: 'off'
+      sequence:
+      - action: button.press
+        target:
+          entity_id: button.zag063912_stop_charging
+    default: []
+
+
+
+- id: ev_takeover_armed_init_on_start
+  alias: EV takeover → init armed on HA start
+  mode: single
+  triggers:
+  - trigger: homeassistant
+    event: start
+  actions:
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: >
+          {{ states('sensor.zag063912_charger_mode') in ['disconnected','unknown']
+             and is_state('switch.zag063912_charging','off') }}
+      sequence:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.ev_takeover_armed
+    default:
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.ev_takeover_armed
+
+- id: ev_takeover_rearm_on_disconnect_or_safe_unknown
+  alias: EV takeover → re-arm on disconnect (or safe unknown)
+  mode: single
+  triggers:
+  - trigger: state
+    entity_id: sensor.zag063912_charger_mode
+    to: disconnected
+  - trigger: state
+    entity_id: sensor.zag063912_charger_mode
+    to: unknown
+    for: "00:02:00"
+  conditions:
+  - condition: state
+    entity_id: switch.zag063912_charging
+    state: 'off'
+  actions:
+  - action: input_boolean.turn_on
+    target:
+      entity_id: input_boolean.ev_takeover_armed
+
+- id: ev_enabled_capture_start_soc
+  alias: EV enabled → capture start SOC
+  mode: single
+  triggers:
+    - trigger: state
+      entity_id: input_boolean.ev_smart_charge_enabled
+      to: "on"
+  actions:
+    - variables:
+        soc_raw: "{{ states('sensor.smart_battery') }}"
+    - condition: template
+      value_template: "{{ soc_raw not in ['unknown','unavailable','none',''] }}"
+    - action: input_number.set_value
+      target:
+        entity_id: input_number.ev_start_soc
       data:
-        title: "Low Battery Alert"
-        message: "Your phone battery is at {{ states('sensor.phone_battery_level') }}%"
+        value: "{{ soc_raw | float(0) | round(0) }}"
+
+- id: ev_charge_control_reconcile_5m
+  alias: EV charge control (15m) — reconcile every 5 min
+  mode: restart
+  enabled: false  # DISABLED: superseded by ev_control_effective_master (has built-in 5m reconcile)
+  triggers:
+    - trigger: time_pattern
+      minutes: "/5"
+      seconds: 10
+
+  conditions:
+    - condition: state
+      entity_id: input_boolean.ev_smart_charge_enabled
+      state: "on"
+
+  actions:
+    - variables:
+        should_now: "{{ is_state('binary_sensor.ev_should_charge_now_15m','on') }}"
+        charging_switch: "{{ is_state('switch.zag063912_charging','on') }}"
+        charger_mode: "{{ states('sensor.zag063912_charger_mode') }}"
+        charging_active: "{{ charging_switch or charger_mode == 'connected_charging' }}"
+
+    - choose:
+        # If we should charge but aren't, try resume
+        - conditions:
+            - condition: template
+              value_template: "{{ should_now and not charging_active }}"
+          sequence:
+            - action: button.press
+              target:
+                entity_id: button.zag063912_resume_charging
+
+        # If we should NOT charge but are charging, stop
+        - conditions:
+            - condition: template
+              value_template: "{{ (not should_now) and charging_active }}"
+          sequence:
+            - action: button.press
+              target:
+                entity_id: button.zag063912_stop_charging

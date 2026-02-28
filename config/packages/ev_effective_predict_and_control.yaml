@@ -1,0 +1,533 @@
+template:
+  - sensor:
+      - name: "EV planning horizon end (ts)"
+        unique_id: ev_planning_horizon_end_ts
+        icon: mdi:timeline-clock
+        state: >-
+          {% set allow_pred = is_state('input_boolean.ev_allow_predicted_hours','on') %}
+          {% set spot = states('sensor.ev_spot_horizon_end_ts') | int(0) %}
+          {% set pricing = states('sensor.ev_pricing_horizon_end_ts') | int(0) %}
+          {{ (pricing if allow_pred else spot) | int(0) }}
+        attributes:
+          horizon_end_local: >-
+            {% set t = states('sensor.ev_planning_horizon_end_ts') | int(0) %}
+            {% if t > 0 %}{{ t | timestamp_custom('%d.%m.%Y %H:%M', true) }}{% else %}n/a{% endif %}
+          spot_end_local: >-
+            {% set t = states('sensor.ev_spot_horizon_end_ts') | int(0) %}
+            {% if t > 0 %}{{ t | timestamp_custom('%d.%m.%Y %H:%M', true) }}{% else %}n/a{% endif %}
+          pricing_end_local: >-
+            {% set t = states('sensor.ev_pricing_horizon_end_ts') | int(0) %}
+            {% if t > 0 %}{{ t | timestamp_custom('%d.%m.%Y %H:%M', true) }}{% else %}n/a{% endif %}
+          mode: >-
+            {{ 'allow_predicted' if is_state('input_boolean.ev_allow_predicted_hours','on') else 'confirmed_only' }}
+
+      - name: "EV spot horizon end (ts)"
+        unique_id: ev_spot_horizon_end_ts
+        icon: mdi:clock-end
+        state: >-
+          {% set spot = state_attr('sensor.ev_price_slots_15m','data') %}
+          {% if spot is iterable and spot is not string and (spot|length > 0) %}
+            {{ (as_timestamp(spot[-1].DateTime) | int(0)) }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: "EV pricing horizon end (ts)"
+        unique_id: ev_pricing_horizon_end_ts
+        icon: mdi:clock-end
+        state: >-
+          {% set eff = state_attr('sensor.ev_price_slots_15m_effective','data') %}
+          {% if eff is iterable and eff is not string and (eff|length > 0) %}
+            {{ as_timestamp(eff[-1].DateTime) | int(0) }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: "EV predict source status"
+        unique_id: ev_predict_source_status
+        icon: mdi:database-search
+        state: >-
+          {% set e = states('sensor.nordpool_predict_fi_price') %}
+          {% if e in ['unknown','unavailable','none',''] %}missing{% else %}ok{% endif %}
+        attributes:
+          entity: "sensor.nordpool_predict_fi_price"
+          has_forecast_attr: >-
+            {{ state_attr('sensor.nordpool_predict_fi_price','forecast') is not none }}
+          has_data_attr: >-
+            {{ state_attr('sensor.nordpool_predict_fi_price','data') is not none }}
+          has_prices_attr: >-
+            {{ state_attr('sensor.nordpool_predict_fi_price','prices') is not none }}
+          note: "If state is missing, enable the Nordpool Predict FI 'price' entity or verify entity_id."
+
+      - name: "EV predict hourly series"
+        unique_id: ev_predict_hourly_series
+        icon: mdi:chart-timeline-variant
+        state: "ok"
+        attributes:
+          data: >-
+            {% set raw = state_attr('sensor.nordpool_predict_fi_price','forecast') %}
+            {% if raw is mapping %}
+              {% if raw.data is defined %}{% set raw = raw.data %}
+              {% elif raw.values is defined %}{% set raw = raw.values %}
+              {% elif raw.items is defined %}{% set raw = raw.items %}
+              {% elif raw.forecast is defined %}{% set raw = raw.forecast %}
+              {% else %}{% set raw = [] %}
+              {% endif %}
+            {% endif %}
+
+            {% if raw is not iterable or raw is string or (raw|length == 0) %}
+              []
+            {% else %}
+              {% set out = namespace(v=[]) %}
+              {% for it in raw %}
+                {% if it is mapping %}
+                  {% set t =
+                    it.timestamp if it.timestamp is defined else
+                    it.time if it.time is defined else
+                    it.datetime if it.datetime is defined else
+                    it.start if it.start is defined else
+                    it.date if it.date is defined else
+                    it.dt if it.dt is defined else
+                    none
+                  %}
+                  {% set v =
+                    it.value if it.value is defined else
+                    it.price if it.price is defined else
+                    it.PriceWithTax if it.PriceWithTax is defined else
+                    it.eur_kwh if it.eur_kwh is defined else
+                    it.eur_per_kwh if it.eur_per_kwh is defined else
+                    it.Price if it.Price is defined else
+                    none
+                  %}
+                {% else %}
+                  {% set t = none %}
+                  {% set v = none %}
+                {% endif %}
+
+                {% set ts = as_timestamp(t) if t is not none else none %}
+                {% set p = v | float(none) if v is not none else none %}
+
+                {% if ts is not none and p is not none %}
+                  {# Nordpool Predict often gives c/kWh; normalize to EUR/kWh by /100 if needed #}
+                  {% set out.v = out.v + [ { 'ts': (ts|int), 'PriceWithTax': ((p|float) / 100) } ] %}
+                {% endif %}
+              {% endfor %}
+              {{ (out.v | sort(attribute='ts')) }}
+            {% endif %}
+
+      - name: "EV price slots 15m [effective]"
+        unique_id: ev_price_slots_15m_effective
+        icon: mdi:tag-multiple
+        state: "ok"
+        attributes:
+          data: >-
+            {% set spot = state_attr('sensor.ev_price_slots_15m','data') %}
+            {% set spot_ok = spot is iterable and spot is not string and (spot|length > 0) %}
+            {% set pred = state_attr('sensor.ev_predict_15m_series','data') %}
+            {% set pred_ok = pred is iterable and pred is not string and (pred|length > 0) %}
+
+            {% if not spot_ok and not pred_ok %}
+              []
+            {% else %}
+              {% set S = namespace(v=[]) %}
+              {% if spot_ok %}
+                {% for it in spot %}
+                  {% set ts = as_timestamp(it.DateTime) %}
+                  {% if ts is not none %}
+                    {% set S.v = S.v + [ {'DateTime': it.DateTime, 'ts': (ts|int), 'PriceWithTax': (it.PriceWithTax | float(999999))} ] %}
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+
+              {% set P = namespace(v=[]) %}
+              {% if pred_ok %}
+                {% for it in pred %}
+                  {% set ts = as_timestamp(it.DateTime) | int(0) %}
+                  {% if ts > 0 %}
+                    {% set P.v = P.v + [ {'DateTime': it.DateTime, 'ts': ts, 'PriceWithTax': (it.PriceWithTax | float(999999))} ] %}
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+
+              {% set S_sorted = S.v | sort(attribute='ts') %}
+              {% set P_sorted = P.v | sort(attribute='ts') %}
+              {% set last_spot_ts = (S_sorted[-1].ts if (S_sorted|length>0) else 0) | int(0) %}
+
+              {% set merged = namespace(v=[]) %}
+              {% for it in S_sorted %}{% set merged.v = merged.v + [it] %}{% endfor %}
+              {% for it in P_sorted %}
+                {% if it.ts > last_spot_ts %}
+                  {% set merged.v = merged.v + [it] %}
+                {% endif %}
+              {% endfor %}
+
+              {% set sorted_by_price = merged.v | sort(attribute='PriceWithTax') %}
+              {% set rm = namespace(map={}) %}
+              {% for j in range(0, sorted_by_price|length) %}
+                {% set t = sorted_by_price[j].ts %}
+                {% set rm.map = dict(rm.map, **{ (t|string): (j+1) }) %}
+              {% endfor %}
+
+              {% set out = namespace(v=[]) %}
+              {% for it in (merged.v | sort(attribute='ts')) %}
+                {% set r = rm.map.get(it.ts|string, 9999) %}
+                {% set out.v = out.v + [ {'DateTime': it.DateTime, 'Rank': r, 'PriceWithTax': it.PriceWithTax} ] %}
+              {% endfor %}
+              {{ out.v }}
+            {% endif %}
+
+      - name: "EV plan 15m (rank) [effective]"
+        unique_id: ev_plan_15m_rank_effective
+        icon: mdi:calendar-clock
+        state: >-
+          {% set data = state_attr('sensor.ev_price_slots_15m_effective','data') %}
+          {% if data is not iterable or data|length == 0 %}no-data{% else %}ok{% endif %}
+        attributes:
+          planned_slots: >-
+            {% if not is_state('input_boolean.ev_smart_charge_enabled','on') %}
+              []
+            {% else %}
+              {% set data = state_attr('sensor.ev_price_slots_15m_effective','data') %}
+              {% if data is not iterable or data|length == 0 %}
+                []
+              {% else %}
+                {% set kw = states('sensor.ev_effective_charge_power_kw') | float(0) %}
+                {% if kw <= 0 %}
+                  []
+                {% else %}
+                  {% set per_q = kw * 0.25 %}
+                  {% set dl = states('input_datetime.ev_deadline') %}
+                  {% set dl_ts = as_timestamp(as_datetime(dl)) if dl not in ['unknown','unavailable','none',''] else none %}
+                  {% set window_start = (as_timestamp(now()) // 900) * 900 %}
+                  {% set spot_end_ts = states('sensor.ev_spot_horizon_end_ts') | int(0) %}
+                  {% set spot_end_q = ((spot_end_ts // 900) * 900) | int %}
+                  {% set allow_predicted = is_state('input_boolean.ev_allow_predicted_hours','on') %}
+
+                  {% if dl_ts is none %}
+                    []
+                  {% else %}
+                    {% set end_ts = (dl_ts | int) %}
+                    {% if not allow_predicted and spot_end_q > 0 %}
+                      {% set end_ts = [end_ts, spot_end_q] | min %}
+                    {% endif %}
+
+                    {% if end_ts <= window_start %}
+                      []
+                    {% else %}
+                      {% set rem_kwh = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+                      {% if rem_kwh <= 0 %}
+                        []
+                      {% else %}
+                        {% set q = (rem_kwh / per_q) | round(0, 'ceil') | int %}
+                        {% set future = namespace(items=[]) %}
+                        {% for it in data %}
+                          {% set ts = as_timestamp(it.DateTime) %}
+                          {% if ts is not none and ts >= window_start and ts < end_ts %}
+                            {% set future.items = future.items + [ {'ts': (ts|int), 'rank': (it.Rank|int(9999))} ] %}
+                          {% endif %}
+                        {% endfor %}
+                        {% set N = future.items | length %}
+                        {% if N == 0 %}
+                          []
+                        {% else %}
+                          {% set q2 = [q, N] | min %}
+                          {{ (future.items | sort(attribute='rank'))[:q2] }}
+                        {% endif %}
+                      {% endif %}
+                    {% endif %}
+                  {% endif %}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+
+  - binary_sensor:
+      - name: "EV warning: confirmed-only but deadline beyond spot"
+        unique_id: ev_warning_confirmed_only_deadline_beyond_spot
+        icon: mdi:alert
+        state: >-
+          {% if is_state('input_boolean.ev_allow_predicted_hours','on') %}
+            false
+          {% else %}
+            {% set spot = states('sensor.ev_spot_horizon_end_ts') | int(0) %}
+            {% set dl = states('input_datetime.ev_deadline') %}
+            {% set dl_ts = as_timestamp(as_datetime(dl)) if dl not in ['unknown','unavailable','none',''] else 0 %}
+            {{ (spot > 0) and (dl_ts > 0) and (dl_ts > spot) }}
+          {% endif %}
+
+      - name: "EV should charge now (15m) [effective]"
+        unique_id: ev_should_charge_now_15m_effective
+        state: >-
+          {% set plan = state_attr('sensor.ev_plan_15m_rank_effective','planned_slots') %}
+          {% if plan is not iterable or plan|length == 0 %}
+            false
+          {% else %}
+            {% set slot_ts = (as_timestamp(now()) // 900) * 900 %}
+            {% set starts = plan | map(attribute='ts') | map('int') | list %}
+            {{ slot_ts in starts }}
+          {% endif %}
+
+input_boolean:
+  ev_allow_predicted_hours:
+    name: Allow predicted hours
+    icon: mdi:crystal-ball
+    initial: false
+
+input_number:
+  ev_session_cost_frozen_eur:
+    name: EV session cost frozen (EUR)
+    min: 0
+    max: 200000
+    step: 0.01
+    unit_of_measurement: EUR
+    icon: mdi:lock
+
+  ev_session_cost_last_eur:
+    name: EV session cost last (EUR)
+    min: 0
+    max: 200000
+    step: 0.01
+    unit_of_measurement: EUR
+    icon: mdi:currency-eur
+
+input_datetime:
+  ev_session_last_end:
+    name: EV session last end
+    has_date: true
+    has_time: true
+    icon: mdi:clock-end
+
+sensor:
+  - platform: statistics
+    name: EV session cost mean (7d)
+    unique_id: ev_session_cost_mean_7d
+    entity_id: input_number.ev_session_cost_last_eur
+    state_characteristic: mean
+    max_age:
+      days: 7
+
+  - platform: statistics
+    name: EV session cost min (7d)
+    unique_id: ev_session_cost_min_7d
+    entity_id: input_number.ev_session_cost_last_eur
+    state_characteristic: value_min
+    max_age:
+      days: 7
+
+  - platform: statistics
+    name: EV session cost max (7d)
+    unique_id: ev_session_cost_max_7d
+    entity_id: input_number.ev_session_cost_last_eur
+    state_characteristic: value_max
+    max_age:
+      days: 7
+
+  - platform: statistics
+    name: EV session cost mean (30d)
+    unique_id: ev_session_cost_mean_30d
+    entity_id: input_number.ev_session_cost_last_eur
+    state_characteristic: mean
+    max_age:
+      days: 30
+
+  - platform: statistics
+    name: EV session cost min (30d)
+    unique_id: ev_session_cost_min_30d
+    entity_id: input_number.ev_session_cost_last_eur
+    state_characteristic: value_min
+    max_age:
+      days: 30
+
+  - platform: statistics
+    name: EV session cost max (30d)
+    unique_id: ev_session_cost_max_30d
+    entity_id: input_number.ev_session_cost_last_eur
+    state_characteristic: value_max
+    max_age:
+      days: 30
+
+automation:
+  - id: ev_deadline_guard_clamp_to_pricing_horizon
+    alias: EV UI guard → clamp deadline to pricing horizon
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: input_datetime.ev_deadline
+      - platform: state
+        entity_id:
+          - sensor.ev_pricing_horizon_end_ts
+          - sensor.ev_spot_horizon_end_ts
+          - sensor.ev_predict_horizon_end_ts
+    action:
+      - variables:
+          dl_s: "{{ states('input_datetime.ev_deadline') }}"
+          dl_ts: >-
+            {% if dl_s in ['unknown','unavailable','none',''] %}
+              none
+            {% else %}
+              {{ as_timestamp(as_datetime(dl_s)) | int }}
+            {% endif %}
+          horizon_ts: "{{ states('sensor.ev_pricing_horizon_end_ts') | int(0) }}"
+          now_ts: "{{ as_timestamp(now()) | int }}"
+          min_ok_ts: "{{ (now_ts + 15*60) | int }}"
+          horizon_q_ts: "{{ ((horizon_ts // 900) * 900) | int }}"
+          dl_q_up: >-
+            {% if dl_ts is none %}
+              none
+            {% else %}
+              {{ (((dl_ts + 899) // 900) * 900) | int }}
+            {% endif %}
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ dl_ts is none }}"
+            sequence: []
+          - conditions:
+              - condition: template
+                value_template: "{{ dl_q_up is not none and dl_q_up < min_ok_ts }}"
+            sequence:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.ev_deadline
+                data:
+                  timestamp: "{{ (((min_ok_ts + 899) // 900) * 900) | int }}"
+          - conditions:
+              - condition: template
+                value_template: "{{ dl_q_up is not none and horizon_q_ts > 0 and dl_q_up > horizon_q_ts }}"
+            sequence:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.ev_deadline
+                data:
+                  timestamp: "{{ horizon_q_ts }}"
+              - service: persistent_notification.create
+                data:
+                  title: "EV deadline clamped"
+                  message: >-
+                    Deadline was beyond pricing horizon. Clamped to
+                    {{ as_local(as_datetime(horizon_q_ts)).strftime('%d.%m.%Y %H:%M') }}.
+
+  - id: ev_control_effective_master
+    alias: EV control (effective) → master
+    mode: restart
+    trigger:
+      - platform: state
+        entity_id: input_boolean.ev_smart_charge_enabled
+        id: enabled_change
+      - platform: state
+        entity_id: binary_sensor.ev_should_charge_now_15m_effective
+        id: should_change
+      - platform: time_pattern
+        minutes: "/15"
+        seconds: 0
+        id: quarter_tick
+      - platform: time_pattern
+        minutes: "/5"
+        seconds: 10
+        id: reconcile_5m
+      - platform: state
+        entity_id: sensor.zag063912_charger_mode
+        id: charger_mode
+      - platform: homeassistant
+        event: start
+        id: ha_start
+    action:
+      - variables:
+          enabled: "{{ is_state('input_boolean.ev_smart_charge_enabled','on') }}"
+          should: "{{ is_state('binary_sensor.ev_should_charge_now_15m_effective','on') }}"
+          charging_switch: "{{ is_state('switch.zag063912_charging','on') }}"
+          charger_mode: "{{ states('sensor.zag063912_charger_mode') }}"
+          charging_active: "{{ charging_switch or charger_mode == 'connected_charging' }}"
+          now_ts: "{{ as_timestamp(now()) }}"
+          dl: "{{ states('input_datetime.ev_deadline') }}"
+          end_ts: "{{ as_timestamp(as_datetime(dl)) if dl not in ['unknown','unavailable','none',''] else 0 }}"
+          remaining: "{{ states('sensor.ev_remaining_used_kwh') | float(0) }}"
+      - choose:
+          # Smart charging disabled → no action
+          - conditions:
+              - condition: template
+                value_template: "{{ not enabled }}"
+            sequence: []
+          # Deadline passed or target fully charged → stop if active
+          - conditions:
+              - condition: template
+                value_template: "{{ enabled and ((end_ts > 0 and end_ts <= now_ts) or remaining <= 0) }}"
+            sequence:
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ charging_active }}"
+                    sequence:
+                      - service: button.press
+                        target:
+                          entity_id: button.zag063912_stop_charging
+          # Should charge now but not charging → resume
+          - conditions:
+              - condition: template
+                value_template: "{{ enabled and should and not charging_active }}"
+            sequence:
+              - service: button.press
+                target:
+                  entity_id: button.zag063912_resume_charging
+        default:
+          # Should NOT charge but IS charging → stop
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ enabled and not should and charging_active }}"
+                sequence:
+                  - service: button.press
+                    target:
+                      entity_id: button.zag063912_stop_charging
+
+  - id: ev_session_cost_freeze_on_smart_disable
+    alias: EV session → freeze actual cost when smart charging disabled
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: input_boolean.ev_smart_charge_enabled
+        from: "on"
+        to: "off"
+    action:
+      - variables:
+          cur: "{{ states('input_number.ev_campaign_cost_eur') | float(0) }}"
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.ev_session_cost_frozen_eur
+        data:
+          value: "{{ cur | round(2) }}"
+
+  - id: ev_session_cost_log_on_session_end
+    alias: EV session → log actual cost when session ends
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.ev_charge_session_active
+        from: "on"
+        to: "off"
+    action:
+      - variables:
+          cost: "{{ states('input_number.ev_campaign_cost_eur') | float(0) }}"
+          frozen: "{{ states('input_number.ev_session_cost_frozen_eur') | float(0) }}"
+          ts: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+          dt: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.ev_session_cost_last_eur
+        data:
+          value: "{{ cost | round(2) }}"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.ev_session_last_end
+        data:
+          datetime: "{{ dt }}"
+      - service: logbook.log
+        data:
+          name: "EV session cost"
+          message: >-
+            Ended {{ ts }} | actual={{ cost | round(2) }} EUR | frozen_at_smart_off={{ frozen | round(2) }} EUR
+          entity_id: input_number.ev_campaign_cost_eur
+      - service: system_log.write
+        data:
+          level: info
+          message: >-
+            EV session ended {{ ts }} | actual={{ cost | round(2) }} EUR | frozen_at_smart_off={{ frozen | round(2) }} EUR

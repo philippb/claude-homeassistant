@@ -1,0 +1,297 @@
+# packages/ev_prices_effective_and_plan.yaml
+# Backend: build 15m forecast from Nordpool Predict FI next_1h/3h/6h/12h averages,
+# merge with spot-hinta.fi 15m series, clamp deadline to horizon, and plan against merged series.
+#
+# CHANGE (2026-02-26):
+# - Add price in c/kWh incl transfer fee +6.7c: PriceCt (1 decimal)
+# - Keep existing PriceWithTax in EUR/kWh unchanged for planner logic
+
+template:
+  - sensor:
+      - name: "EV predict horizon end (ts)"
+        unique_id: ev_predict_horizon_end_ts
+        icon: mdi:clock-end
+        state: >-
+          {{ (((as_timestamp(now()) // 900) * 900 + 12*3600) | int) | string }}
+        attributes:
+          horizon_hours: "12"
+          horizon_end_local: >-
+            {{ as_local(as_datetime(((as_timestamp(now()) // 900) * 900 + 12*3600))).strftime('%d.%m.%Y %H:%M') }}
+
+  - sensor:
+      - name: "EV predict 15m series"
+        unique_id: ev_predict_15m_series
+        icon: mdi:chart-line
+        state: "ok"
+        attributes:
+          data: >-
+            {# Read individual hourly prices from ev_predict_hourly_series.
+               That sensor already divides by 100 (c/kWh → EUR/kWh) so
+               PriceWithTax values here are already in EUR/kWh.
+               Each hourly entry is expanded to 4×15-min slots. #}
+            {% set h = state_attr('sensor.ev_predict_hourly_series','data') %}
+            {% if h is not iterable or h is string or (h|length == 0) %}
+              []
+            {% else %}
+              {% set base = namespace(v=[]) %}
+              {% for it in h %}
+                {% set ts = it.ts | int(0) %}
+                {% set p  = it.PriceWithTax | float(none) %}
+                {% if ts > 0 and p is not none %}
+                  {% for k in [0, 900, 1800, 2700] %}
+                    {% set t = (ts + k) | int %}
+                    {% set base.v = base.v + [ {
+                      'DateTime': as_local(as_datetime(t)).isoformat(),
+                      'ts': t,
+                      'PriceWithTax': (p | round(6))
+                    } ] %}
+                  {% endfor %}
+                {% endif %}
+              {% endfor %}
+
+              {% if base.v | length == 0 %}
+                []
+              {% else %}
+                {# Rank all slots globally (1 = cheapest) #}
+                {% set sorted = base.v | sort(attribute='PriceWithTax') %}
+                {% set m = namespace(map={}) %}
+                {% for j in range(0, sorted|length) %}
+                  {% set t = sorted[j].ts %}
+                  {% set m.map = dict(m.map, **{ (t|string): (j+1) }) %}
+                {% endfor %}
+
+                {% set out = namespace(v=[]) %}
+                {% for it in (base.v | sort(attribute='ts')) %}
+                  {% set r = m.map.get(it.ts|string, 9999) %}
+                  {% set out.v = out.v + [ {
+                    'DateTime': it.DateTime,
+                    'Rank': r,
+                    'PriceWithTax': it.PriceWithTax,
+                    'ts': it.ts
+                  } ] %}
+                {% endfor %}
+                {{ out.v }}
+              {% endif %}
+            {% endif %}
+          horizon_end_ts: >-
+            {{ states('sensor.ev_predict_horizon_end_ts') }}
+          note: "Individual hourly prices from ev_predict_hourly_series (EUR/kWh), expanded to 15m slots."
+
+
+  - sensor:
+      - name: "EV plan 15m (rank)"
+        unique_id: ev_plan_15m_rank
+        icon: mdi:calendar-clock
+        state: >-
+          {% set data = state_attr('sensor.ev_price_slots_15m_effective','data') %}
+          {% if data is not iterable or data|length == 0 %} no-data {% else %} ok {% endif %}
+        attributes:
+          q: >-
+            {% set kw = states('sensor.ev_effective_charge_power_kw') | float(0) %}
+            {% if kw <= 0 %}
+              0
+            {% else %}
+              {% set per_q = kw * 0.25 %}
+
+              {% set dl = states('input_datetime.ev_deadline') %}
+              {% set end_ts = as_timestamp(as_datetime(dl)) if dl not in ['unknown','unavailable','none',''] else none %}
+              {% set now_ts = as_timestamp(now()) %}
+              {% if end_ts is none or end_ts <= now_ts %}
+                0
+              {% else %}
+                {% set soc_now = states('sensor.smart_battery') | float(0) %}
+                {% set soc_start = states('input_number.ev_start_soc') | float(soc_now) %}
+                {% set soc_target = states('input_number.ev_max_soc') | float(100) %}
+
+                {% set denom = (soc_target - soc_start) %}
+                {% set progress = ((soc_now - soc_start) / denom) if denom > 0 else 0 %}
+                {% set progress = [progress, 0] | max %}
+                {% set progress = [progress, 1] | min %}
+
+                {% set rem_kwh = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+
+                {% if rem_kwh <= 0 %}
+                  0
+                {% else %}
+                  {% set q_base = (rem_kwh / per_q) | round(0, 'ceil') | int %}
+
+                  {% set q_buf = 0 %}
+                  {% if progress >= 0.90 %}
+                    {% set q_buf = 2 %}
+                  {% elif progress >= 0.75 %}
+                    {% set q_buf = 1 %}
+                  {% endif %}
+
+                  {% set q = (q_base + q_buf) | int %}
+
+                  {% if progress >= 0.75 %}
+                    {% set remaining_quarters = ((end_ts - now_ts) / 900) | round(0, 'floor') | int %}
+                    {% set tight = remaining_quarters <= (q_base + 1) %}
+                    {% if tight %}
+                      {% set q = q_base + 2 %}
+                    {% endif %}
+                  {% endif %}
+
+                  {{ [q, 0] | max | int }}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+
+          preview_slots: >-
+            {% set data = state_attr('sensor.ev_price_slots_15m_effective','data') %}
+            {% if data is not iterable or data|length == 0 %}
+              []
+            {% else %}
+              {% set kw = states('sensor.ev_effective_charge_power_kw') | float(0) %}
+              {% if kw <= 0 %}
+                []
+              {% else %}
+                {% set per_q = kw * 0.25 %}
+
+                {% set dl = states('input_datetime.ev_deadline') %}
+                {% set end_ts = as_timestamp(as_datetime(dl)) if dl not in ['unknown','unavailable','none',''] else none %}
+                {% set window_start = (as_timestamp(now()) // 900) * 900 %}
+                {% if end_ts is none or end_ts <= window_start %}
+                  []
+                {% else %}
+                  {% set now_ts = as_timestamp(now()) %}
+
+                  {% set soc_now = states('sensor.smart_battery') | float(0) %}
+                  {% set soc_start = states('input_number.ev_start_soc') | float(soc_now) %}
+                  {% set soc_target = states('input_number.ev_max_soc') | float(100) %}
+
+                  {% set denom = (soc_target - soc_start) %}
+                  {% set progress = ((soc_now - soc_start) / denom) if denom > 0 else 0 %}
+                  {% set progress = [progress, 0] | max %}
+                  {% set progress = [progress, 1] | min %}
+
+                  {% set rem_kwh = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+                  {% if rem_kwh <= 0 %}
+                    []
+                  {% else %}
+                    {% set q_base = (rem_kwh / per_q) | round(0, 'ceil') | int %}
+
+                    {% set q_buf = 0 %}
+                    {% if progress >= 0.90 %}
+                      {% set q_buf = 2 %}
+                    {% elif progress >= 0.75 %}
+                      {% set q_buf = 1 %}
+                    {% endif %}
+
+                    {% set q = (q_base + q_buf) | int %}
+
+                    {% if progress >= 0.75 %}
+                      {% set remaining_quarters = ((end_ts - now_ts) / 900) | round(0, 'floor') | int %}
+                      {% set tight = remaining_quarters <= (q_base + 1) %}
+                      {% if tight %}
+                        {% set q = q_base + 2 %}
+                      {% endif %}
+                    {% endif %}
+
+                    {% set future = namespace(items=[]) %}
+                    {% for it in data %}
+                      {% set ts = as_timestamp(it.DateTime) %}
+                      {% if ts is not none and ts >= window_start and ts < end_ts %}
+                        {% set future.items = future.items + [ {
+                          'ts': (ts | int),
+                          'rank': (it.Rank | int(9999)),
+                          'price': (it.PriceWithTax | float(999))
+                        } ] %}
+                      {% endif %}
+                    {% endfor %}
+
+                    {% set N = future.items | length %}
+                    {% if N == 0 %}
+                      []
+                    {% else %}
+                      {% set q2 = [q, N] | min %}
+                      {{ (future.items | sort(attribute='rank'))[:q2] }}
+                    {% endif %}
+                  {% endif %}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+
+          planned_slots: >-
+            {% if is_state('input_boolean.ev_smart_charge_enabled','on') %}
+              {{ state_attr('sensor.ev_plan_15m_rank','preview_slots') }}
+            {% else %}
+              []
+            {% endif %}
+
+  - binary_sensor:
+      - name: "EV should charge now (15m)"
+        unique_id: ev_should_charge_now_15m
+        state: >-
+          {% set plan = state_attr('sensor.ev_plan_15m_rank','planned_slots') %}
+          {% if plan is not iterable or plan|length == 0 %}
+            false
+          {% else %}
+            {% set slot_ts = (as_timestamp(now()) // 900) * 900 %}
+            {% set starts = plan | map(attribute='ts') | map('int') | list %}
+            {{ slot_ts in starts }}
+          {% endif %}
+
+automation:
+  - id: ev_deadline_guard_clamp_to_predict_horizon
+    alias: EV UI guard → clamp deadline to predict horizon
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_datetime.ev_deadline
+      - trigger: state
+        entity_id: sensor.ev_predict_horizon_end_ts
+
+    actions:
+      - variables:
+          dl_s: "{{ states('input_datetime.ev_deadline') }}"
+          dl_ts: >-
+            {% if dl_s in ['unknown','unavailable','none',''] %}
+              none
+            {% else %}
+              {{ as_timestamp(as_datetime(dl_s)) | int }}
+            {% endif %}
+          horizon_ts: "{{ states('sensor.ev_predict_horizon_end_ts') | int(0) }}"
+          now_ts: "{{ as_timestamp(now()) | int }}"
+          min_ok_ts: "{{ (now_ts + 15*60) | int }}"
+          horizon_q_ts: "{{ ((horizon_ts // 900) * 900) | int }}"
+          dl_q_up: >-
+            {% if dl_ts is none %}
+              none
+            {% else %}
+              {{ (((dl_ts + 899) // 900) * 900) | int }}
+            {% endif %}
+
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ dl_ts is none }}"
+            sequence: []
+
+          - conditions:
+              - condition: template
+                value_template: "{{ dl_q_up is not none and dl_q_up < min_ok_ts }}"
+            sequence:
+              - action: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.ev_deadline
+                data:
+                  timestamp: "{{ (((min_ok_ts + 899) // 900) * 900) | int }}"
+
+          - conditions:
+              - condition: template
+                value_template: "{{ dl_q_up is not none and horizon_q_ts > 0 and dl_q_up > horizon_q_ts }}"
+            sequence:
+              - action: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.ev_deadline
+                data:
+                  timestamp: "{{ horizon_q_ts }}"
+
+              - action: persistent_notification.create
+                data:
+                  title: "EV deadline clamped"
+                  message: >-
+                    Deadline was beyond Nordpool Predict FI horizon (12h). Clamped to
+                    {{ as_local(as_datetime(horizon_q_ts)).strftime('%d.%m.%Y %H:%M') }}.
+        default: []

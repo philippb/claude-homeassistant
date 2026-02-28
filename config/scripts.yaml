@@ -1,52 +1,100 @@
-# Example Home Assistant Scripts
-# These are reusable sequences that can be called from automations or manually
-
-good_morning:
-  alias: "Good Morning Routine"
-  description: "Morning startup sequence"
+suihku_lattialammon_boost_3_ja_palauta:
+  alias: Suihku lattialämmön boost (+3 ja palauta)
+  mode: single
+  fields:
+    duration:
+      name: Duration
+      description: Kuinka kauan boost on päällä
+      default: 01:00:00
   sequence:
-    - service: light.turn_on
-      target:
-        area_id: bedroom
-      data:
-        brightness_pct: 30
-    - delay: '00:00:30'
-    - service: media_player.volume_set
-      target:
-        entity_id: media_player.bedroom_speaker
-      data:
-        volume_level: 0.3
-    - service: media_player.play_media
-      target:
-        entity_id: media_player.bedroom_speaker
-      data:
-        media_content_id: "https://example.com/morning_playlist"
-        media_content_type: "music"
-
-good_night:
-  alias: "Good Night Routine"
-  description: "Evening shutdown sequence"
+  - condition: state
+    entity_id: input_boolean.shower_floor_boost_active
+    state: 'off'
+  - variables:
+      ce: climate.smart_thermostat_2206241709878160120148e1e999c233
+      current_sp: '{{ state_attr(ce, ''temperature'') | float(0) }}'
+      boosted_sp: '{{ (state_attr(ce, ''temperature'') | float(0)) + 3 }}'
+  - action: input_number.set_value
+    target:
+      entity_id: input_number.shower_floor_prev_temp
+    data:
+      value: '{{ current_sp }}'
+  - action: input_boolean.turn_on
+    target:
+      entity_id: input_boolean.shower_floor_boost_active
+  - action: climate.set_temperature
+    continue_on_error: true
+    target:
+      entity_id: climate.smart_thermostat_2206241709878160120148e1e999c233
+    data:
+      temperature: '{{ boosted_sp }}'
+  - wait_template: "{{ (state_attr('climate.smart_thermostat_2206241709878160120148e1e999c233',
+      'temperature') | float(0))\n   >= (boosted_sp | float(0) - 0.1) }}\n"
+    timeout: 00:00:10
+    continue_on_timeout: true
+  - delay: '{{ duration }}'
+  - action: climate.set_temperature
+    continue_on_error: true
+    target:
+      entity_id: climate.smart_thermostat_2206241709878160120148e1e999c233
+    data:
+      temperature: '{{ states(''input_number.shower_floor_prev_temp'') | float(0)
+        }}'
+  - action: input_boolean.turn_off
+    target:
+      entity_id: input_boolean.shower_floor_boost_active
+bath_boost_debug_snapshot:
+  alias: Bath boost debug snapshot
+  mode: single
   sequence:
-    - service: light.turn_off
-      target:
-        area_id: living_room
-    - service: climate.set_temperature
-      target:
-        entity_id: climate.main_thermostat
-      data:
-        temperature: 68
-    - service: lock.lock
-      target:
-        area_id: exterior
-
-security_check:
-  alias: "Security Check"
-  description: "Check all doors and windows"
+  - variables:
+      ts: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+      rh: '{{ states(''sensor.vallox_humidity'') }}'
+      t_extract: '{{ states(''sensor.vallox_extract_air'') }}'
+      td: '{{ states(''sensor.bath_dew_point'') }}'
+      tf: '{{ states(''sensor.tallin_kylpyhuone_external_sensor'') }}'
+      gain: '{{ states(''sensor.floor_vpd_gain_3c'') }}'
+      worth: '{{ states(''binary_sensor.floor_boost_worth_it'') }}'
+      boost_active: '{{ states(''input_boolean.shower_floor_boost_active'') }}'
+      vpd_now: '{{ states(''sensor.floor_vpd_now'') }}'
+      vp: '{{ states(''sensor.bath_vapor_pressure'') }}'
+      rh_lc: '{{ states.sensor.vallox_humidity.last_changed if states.sensor.vallox_humidity
+        is defined else ''n/a'' }}'
+      worth_lc: '{{ states.binary_sensor.floor_boost_worth_it.last_changed if states.binary_sensor.floor_boost_worth_it
+        is defined else ''n/a'' }}'
+      td_lc: '{{ states.sensor.bath_dew_point.last_changed if states.sensor.bath_dew_point
+        is defined else ''n/a'' }}'
+      tf_lc: '{{ states.sensor.tallin_kylpyhuone_external_sensor.last_changed if states.sensor.tallin_kylpyhuone_external_sensor
+        is defined else ''n/a'' }}'
+      gain_lc: '{{ states.sensor.floor_vpd_gain_3c.last_changed if states.sensor.floor_vpd_gain_3c
+        is defined else ''n/a'' }}'
+      boost_lc: '{{ states.input_boolean.shower_floor_boost_active.last_changed if
+        states.input_boolean.shower_floor_boost_active is defined else ''n/a'' }}'
+      msg: 'Bath boost debug snapshot @ {{ ts }} RH: {{ rh }} % (last_changed: {{
+        rh_lc }}) Extract T: {{ t_extract }} °C Dew point Td: {{ td }} °C (last_changed:
+        {{ td_lc }}) Floor T Tf: {{ tf }} °C (last_changed: {{ tf_lc }}) Vapor pressure
+        ea: {{ vp }} hPa VPD now: {{ vpd_now }} hPa Gain (+3C): {{ gain }} hPa (last_changed:
+        {{ gain_lc }}) Floor boost worth it: {{ worth }} (last_changed: {{ worth_lc
+        }}) Boost active: {{ boost_active }} (last_changed: {{ boost_lc }})'
+  - service: persistent_notification.create
+    data:
+      title: Bath boost debug snapshot
+      message: '{{ msg }}'
+  - service: logbook.log
+    data:
+      name: Bath boost debug snapshot
+      message: '{{ msg }}'
+      entity_id: sensor.bath_dew_point
+ev_capture_session_start:
+  alias: EV capture session start
   sequence:
-    - service: notify.mobile_app
-      data:
-        title: "Security Check"
-        message: >
-          Front Door: {{ states('lock.front_door') }}
-          Back Door: {{ states('lock.back_door') }}
-          Security System: {{ states('alarm_control_panel.home_security') }}
+  - target:
+      entity_id: input_number.ev_session_start_kwh
+    data:
+      value: '{{ states(''sensor.zag063912_energy_meter'') | float(0) }}'
+    action: input_number.set_value
+  - target:
+      entity_id: input_boolean.ev_charge_session_active
+    action: input_boolean.turn_on
+  mode: single
+  description: ''

@@ -1,0 +1,47 @@
+# config/packages/heating_forecast.yaml
+
+template:
+  - sensor:
+      # Tämä on vain näkyvyyttä/debugia varten.
+      # Varsinainen puuttuvien lämpötilojen interpolointi tehdään mallipalvelussa.
+      - name: "HF outdoor temp mean raw"
+        unique_id: hf_outdoor_temp_mean_raw
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state: >
+          {% set v1 = states('sensor.vallox_outdoor_air')|float(none) %}
+          {% set v2 = states('sensor.autolle_temperature')|float(none) %}
+          {% if v1 is not none and v2 is not none %}
+            {{ ((v1 + v2) / 2) | round(2) }}
+          {% elif v1 is not none %}
+            {{ v1 | round(2) }}
+          {% elif v2 is not none %}
+            {{ v2 | round(2) }}
+          {% else %}
+            {{ none }}
+          {% endif %}
+
+mqtt:
+  sensor:
+    - name: "HF heating forecast 15m"
+      unique_id: hf_heating_forecast_15m
+      state_topic: "hf/heating_forecast/state"
+      json_attributes_topic: "hf/heating_forecast/attrs"
+      value_template: "{{ value_json.next_kwh_15m }}"
+      unit_of_measurement: "kWh"
+      device_class: energy
+      icon: mdi:chart-line
+
+    - name: "HF heating forecast max next 2h"
+      unique_id: hf_heating_forecast_max_next_2h
+      state_topic: "hf/heating_forecast/attrs"
+      value_template: >
+        {% set f = value_json.forecast %}
+        {% if f is not defined or f|length < 8 %}
+          {{ none }}
+        {% else %}
+          {{ (f[0:8] | max) | float }}
+        {% endif %}
+      unit_of_measurement: "kWh"
+      device_class: energy
+      icon: mdi:flash

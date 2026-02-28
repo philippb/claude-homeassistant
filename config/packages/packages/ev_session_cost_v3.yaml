@@ -1,0 +1,419 @@
+############################################################
+# EV SESSION COST V3 — FOUNDATION + ACTUAL COST ACCUMULATOR
+# (no dependency removal)
+############################################################
+
+############################
+# TEMPLATE (single block)
+############################
+
+template:
+  - binary_sensor:
+      - name: EV3 session active
+        unique_id: ev3_session_active
+        state: >
+          {{ is_state('input_boolean.ev_charge_session_active','on') }}
+        icon: mdi:ev-station
+
+  - sensor:
+      - name: EV3 delivered this session (kWh)
+        unique_id: ev3_session_delivered_kwh
+        unit_of_measurement: kWh
+        state: >
+          {% set total = states('sensor.zag063912_session_total_charge') | float(0) %}
+          {% set start = states('input_number.ev3_session_start_kwh') | float(0) %}
+          {% if total >= start %}
+            {{ (total - start) | round(3) }}
+          {% else %}
+            0
+          {% endif %}
+        icon: mdi:flash
+
+      - name: "EV3 price now all-in (EUR/kWh)"
+        unique_id: ev3_price_now_eur_kwh_allin
+        unit_of_measurement: "EUR/kWh"
+        icon: mdi:tag
+        state: >
+          {# Spot/forecast price + transfer fee adder (sähkön siirtomaksu ~6.387 c/kWh) #}
+          {% set adders = 0.06387 %}
+          {% set data = state_attr('sensor.ev_price_slots_15m_effective', 'data') %}
+          {% if data is not iterable or data is string or (data | length == 0) %}
+            {{ adders | round(5) }}
+          {% else %}
+            {% set slot_ts = ((as_timestamp(now()) // 900) * 900) | int %}
+            {% set found = namespace(v=none) %}
+            {% for it in data %}
+              {% if (as_timestamp(it.DateTime) | int) == slot_ts %}
+                {% set found.v = it.PriceWithTax | float(none) %}
+              {% endif %}
+            {% endfor %}
+            {% if found.v is none %}
+              {{ adders | round(5) }}
+            {% else %}
+              {{ (found.v + adders) | round(5) }}
+            {% endif %}
+          {% endif %}
+
+      - name: EV3 estimated cost (EUR)
+        unique_id: ev3_estimated_cost_eur
+        unit_of_measurement: EUR
+        icon: mdi:calculator
+        state: >
+          {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+          {% set actual = states('input_number.ev3_session_cost_actual_eur') | float(0) %}
+          {% set charger_kw = states('input_number.ev_assumed_charge_kw') | float(0) %}
+          {% set per_slot_kwh = charger_kw * 0.25 %}
+          {% set eff = states('input_number.ev3_charge_efficiency') | float(1.0) %}
+          {% if eff <= 0 %}{% set eff = 1.0 %}{% endif %}
+          {% set battery_need = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+          {% set grid_need = battery_need / eff %}
+          {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') or [] %}
+          {% set ns = namespace(total=0.0, need=grid_need) %}
+
+          {% for s in slots %}
+            {% if ns.need <= 0 %}{% break %}{% endif %}
+            {% set p = s['price'] | float(0) %}
+            {% set use = per_slot_kwh if ns.need > per_slot_kwh else ns.need %}
+            {% set ns.total = ns.total + (use * p) %}
+            {% set ns.need = ns.need - use %}
+          {% endfor %}
+
+          {% if enabled %}
+            {{ (actual + ns.total) | round(2) }}
+          {% else %}
+            {{ ns.total | round(2) }}
+          {% endif %}
+
+      - name: EV3 estimated cost debug
+        unique_id: ev3_estimated_cost_debug
+        icon: mdi:bug
+        state: >
+          {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+          {% set actual = states('input_number.ev3_session_cost_actual_eur') | float(0) %}
+          {% set charger_kw = states('input_number.ev_assumed_charge_kw') | float(0) %}
+          {% set per_slot_kwh = charger_kw * 0.25 %}
+          {% set eff = states('input_number.ev3_charge_efficiency') | float(1.0) %}
+          {% if eff <= 0 %}{% set eff = 1.0 %}{% endif %}
+          {% set battery_need0 = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+          {% set grid_need0 = battery_need0 / eff %}
+          {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') or [] %}
+          {% set ns = namespace(total=0.0, used=0.0, need=grid_need0) %}
+
+          {% for s in slots %}
+            {% if ns.need <= 0 %}{% break %}{% endif %}
+            {% set p = s['price'] | float(0) %}
+            {% set use = per_slot_kwh if ns.need > per_slot_kwh else ns.need %}
+            {% set ns.total = ns.total + (use * p) %}
+            {% set ns.used = ns.used + use %}
+            {% set ns.need = ns.need - use %}
+          {% endfor %}
+
+          {% if enabled %}
+            {{ ('enabled=on; actual=%.3f; batt_need=%.3f; eff=%.3f; grid_need=%.3f; per_slot_kwh=%.3f; slots=%d; used_kwh=%.3f; planned_sum=%.3f; est_total=%.3f'
+               % (actual, battery_need0, eff, grid_need0, per_slot_kwh, slots|count, ns.used, ns.total, actual + ns.total)) }}
+          {% else %}
+            {{ ('enabled=off; batt_need=%.3f; eff=%.3f; grid_need=%.3f; per_slot_kwh=%.3f; slots=%d; used_kwh=%.3f; planned_sum=%.3f; est_total=%.3f'
+               % (battery_need0, eff, grid_need0, per_slot_kwh, slots|count, ns.used, ns.total, ns.total)) }}
+          {% endif %}
+
+      - name: EV3 plan slot schema debug
+        unique_id: ev3_plan_slot_schema_debug
+        icon: mdi:code-json
+        state: >
+          {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+          {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') or [] %}
+          {% if (slots | count) == 0 %}
+            no-slots
+          {% else %}
+            {% set s = slots[0] %}
+            keys={{ s.keys() | list | join(',') }};
+            ts={{ s.get('ts','') }};
+            rank={{ s.get('rank','') }};
+            price={{ s.get('price','') }};
+            pwt={{ s.get('PriceWithTax','') }};
+            p={{ s.get('p','') }};
+            eur={{ s.get('eur_kwh','') }};
+            ct={{ s.get('ct_kwh','') }}
+          {% endif %}
+
+      - name: EV planned cost (EUR) [v3]
+        unique_id: ev_planned_cost_eur_v3
+        unit_of_measurement: EUR
+        icon: mdi:cash-multiple
+        state: >
+          {{ states('sensor.ev3_estimated_cost_eur') | float(0) | round(2) }}
+        attributes:
+          source: ev3
+          mode: >
+            {% if is_state('input_boolean.ev_smart_charge_enabled','on') %}active{% else %}preview{% endif %}
+          actual_so_far_eur: >
+            {{ states('input_number.ev3_session_cost_actual_eur') | float(0) | round(3) }}
+          batt_need_kwh: >
+            {{ states('sensor.ev_max_target_from_soc_kwh') | float(0) | round(3) }}
+          efficiency: >
+            {{ states('input_number.ev3_charge_efficiency') | float(1.0) | round(3) }}
+          planned_energy_kwh: >
+            {# grid-side planned energy allocated into reserved slots #}
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set charger_kw = states('input_number.ev_assumed_charge_kw') | float(0) %}
+            {% set per_slot_kwh = charger_kw * 0.25 %}
+            {% set eff = states('input_number.ev3_charge_efficiency') | float(1.0) %}
+            {% if eff <= 0 %}{% set eff = 1.0 %}{% endif %}
+            {% set battery_need = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+            {% set need = battery_need / eff %}
+            {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') or [] %}
+            {% set ns = namespace(used=0.0, rem=need) %}
+            {% for s in slots %}
+              {% if ns.rem <= 0 %}{% break %}{% endif %}
+              {% set use = per_slot_kwh if ns.rem > per_slot_kwh else ns.rem %}
+              {% set ns.used = ns.used + use %}
+              {% set ns.rem = ns.rem - use %}
+            {% endfor %}
+            {{ ns.used | round(3) }}
+          slots_count: >
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') or [] %}
+            {{ slots | count }}
+          base_energy_cost_eur: >
+            {# remaining planned cost (grid-side), WITHOUT actual #}
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set charger_kw = states('input_number.ev_assumed_charge_kw') | float(0) %}
+            {% set per_slot_kwh = charger_kw * 0.25 %}
+            {% set eff = states('input_number.ev3_charge_efficiency') | float(1.0) %}
+            {% if eff <= 0 %}{% set eff = 1.0 %}{% endif %}
+            {% set battery_need = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+            {% set need = battery_need / eff %}
+            {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') or [] %}
+            {% set ns = namespace(total=0.0, rem=need) %}
+            {% for s in slots %}
+              {% if ns.rem <= 0 %}{% break %}{% endif %}
+              {% set p = s['price'] | float(0) %}
+              {% set use = per_slot_kwh if ns.rem > per_slot_kwh else ns.rem %}
+              {% set ns.total = ns.total + (use * p) %}
+              {% set ns.rem = ns.rem - use %}
+            {% endfor %}
+            {{ ns.total | round(3) }}
+          adders_total_eur_per_kwh: >
+            0.0
+
+  - sensor:
+      - name: EV planned cost (EUR) [v3]
+        unique_id: ev_planned_cost_eur_v3
+        unit_of_measurement: EUR
+        icon: mdi:cash-multiple
+        state: >
+          {# Show the same number as EV3 estimated total:
+             - enabled=off -> only planned remainder cost
+             - enabled=on  -> actual_so_far + planned remainder cost #}
+          {{ states('sensor.ev3_estimated_cost_eur') | float(0) | round(2) }}
+        attributes:
+          source: ev3
+          mode: >
+            {% if is_state('input_boolean.ev_smart_charge_enabled','on') %}active{% else %}preview{% endif %}
+          actual_so_far_eur: >
+            {{ states('input_number.ev3_session_cost_actual_eur') | float(0) | round(3) }}
+          batt_need_kwh: >
+            {{ states('sensor.ev_max_target_from_soc_kwh') | float(0) | round(3) }}
+          efficiency: >
+            {% set eff = states('input_number.ev3_charge_efficiency') | float(1.0) %}
+            {{ (eff if eff > 0 else 1.0) | round(3) }}
+          grid_need_kwh: >
+            {% set eff = states('input_number.ev3_charge_efficiency') | float(1.0) %}
+            {% if eff <= 0 %}{% set eff = 1.0 %}{% endif %}
+            {% set batt = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+            {{ (batt / eff) | round(3) }}
+          assumed_charge_kw: >
+            {{ states('input_number.ev_assumed_charge_kw') | float(0) | round(3) }}
+          per_slot_kwh: >
+            {% set kw = states('input_number.ev_assumed_charge_kw') | float(0) %}
+            {{ (kw * 0.25) | round(3) }}
+          slots_count: >
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') or [] %}
+            {{ slots | count }}
+          planned_energy_kwh: >
+            {# grid-side planned energy allocated into reserved slots until grid_need is covered #}
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set kw = states('input_number.ev_assumed_charge_kw') | float(0) %}
+            {% set per_slot = kw * 0.25 %}
+            {% set eff = states('input_number.ev3_charge_efficiency') | float(1.0) %}
+            {% if eff <= 0 %}{% set eff = 1.0 %}{% endif %}
+            {% set batt_need = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+            {% set need = batt_need / eff %}
+            {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') or [] %}
+            {% set ns = namespace(used=0.0, rem=need) %}
+            {% for s in slots %}
+              {% if ns.rem <= 0 %}{% break %}{% endif %}
+              {% set use = per_slot if ns.rem > per_slot else ns.rem %}
+              {% set ns.used = ns.used + use %}
+              {% set ns.rem = ns.rem - use %}
+            {% endfor %}
+            {{ ns.used | round(3) }}
+          planned_cost_eur: >
+            {# planned remainder cost: allocate grid_need into slots and price by s['price'] #}
+            {% set enabled = is_state('input_boolean.ev_smart_charge_enabled','on') %}
+            {% set kw = states('input_number.ev_assumed_charge_kw') | float(0) %}
+            {% set per_slot = kw * 0.25 %}
+            {% set eff = states('input_number.ev3_charge_efficiency') | float(1.0) %}
+            {% if eff <= 0 %}{% set eff = 1.0 %}{% endif %}
+            {% set batt_need = states('sensor.ev_max_target_from_soc_kwh') | float(0) %}
+            {% set need = batt_need / eff %}
+            {% set slots = state_attr('sensor.ev_plan_15m_rank', 'planned_slots' if enabled else 'preview_slots') or [] %}
+            {% set ns = namespace(total=0.0, rem=need) %}
+            {% for s in slots %}
+              {% if ns.rem <= 0 %}{% break %}{% endif %}
+              {% set p = s['price'] | float(0) %}
+              {% set use = per_slot if ns.rem > per_slot else ns.rem %}
+              {% set ns.total = ns.total + (use * p) %}
+              {% set ns.rem = ns.rem - use %}
+            {% endfor %}
+            {{ ns.total | round(3) }}
+
+############################
+# HELPERS (single blocks)
+############################
+
+input_datetime:
+  ev3_session_start:
+    name: EV3 session start
+    has_date: true
+    has_time: true
+    icon: mdi:clock-start
+
+  ev3_session_end:
+    name: EV3 session end
+    has_date: true
+    has_time: true
+    icon: mdi:clock-end
+
+
+input_number:
+  ev3_session_start_kwh:
+    name: EV3 session start kWh
+    min: 0
+    max: 100000
+    step: 0.001
+    unit_of_measurement: kWh
+    icon: mdi:counter
+  ev3_charge_efficiency:
+    name: EV3 charge efficiency
+    min: 0.80
+    max: 1.00
+    step: 0.001
+    unit_of_measurement: ""
+    icon: mdi:percent
+    initial: 1.0
+
+  ev3_session_cost_actual_eur:
+    name: EV3 session cost actual (EUR)
+    min: 0
+    max: 200000
+    step: 0.001
+    unit_of_measurement: EUR
+    icon: mdi:currency-eur
+
+  ev3_last_energy_total_kwh:
+    name: EV3 last energy total kWh
+    min: 0
+    max: 100000
+    step: 0.001
+    unit_of_measurement: kWh
+    icon: mdi:counter
+
+
+############################
+# AUTOMATIONS (single block)
+############################
+
+automation:
+  # --- Session start: capture baseline + timestamp
+  - id: ev3_session_start_capture
+    alias: EV3 session → capture start baseline
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.ev3_session_active
+        from: "off"
+        to: "on"
+    actions:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.ev3_session_start_kwh
+        data:
+          value: "{{ states('sensor.zag063912_session_total_charge') | float(0) }}"
+
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.ev3_session_start
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+
+  # --- Session end: store end time
+  - id: ev3_session_end_timestamp
+    alias: EV3 session → store end time
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.ev3_session_active
+        from: "on"
+        to: "off"
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.ev3_session_end
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+
+  # --- Reset actual cost accumulator at session start + initialize last energy pointer
+  - id: ev3_session_cost_reset
+    alias: EV3 session → reset cost accumulator
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.ev3_session_active
+        from: "off"
+        to: "on"
+    actions:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.ev3_session_cost_actual_eur
+        data:
+          value: 0
+
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.ev3_last_energy_total_kwh
+        data:
+          value: "{{ states('sensor.zag063912_session_total_charge') | float(0) }}"
+
+  # --- Continuous accumulator: energy delta × current price
+  - id: ev3_session_cost_accumulate
+    alias: EV3 session → accumulate cost on energy change
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: sensor.zag063912_session_total_charge
+    conditions:
+      - condition: state
+        entity_id: binary_sensor.ev3_session_active
+        state: "on"
+    actions:
+      - variables:
+          current_total: "{{ states('sensor.zag063912_session_total_charge') | float(0) }}"
+          last_total: "{{ states('input_number.ev3_last_energy_total_kwh') | float(0) }}"
+          delta_kwh: >
+            {% set d = current_total - last_total %}
+            {{ d if d > 0 else 0 }}
+          price: "{{ states('sensor.ev3_price_now_eur_kwh') | float(0) }}"
+          current_cost: "{{ states('input_number.ev3_session_cost_actual_eur') | float(0) }}"
+          new_cost: "{{ (current_cost + (delta_kwh * price)) | round(4) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.ev3_session_cost_actual_eur
+        data:
+          value: "{{ new_cost }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.ev3_last_energy_total_kwh
+        data:
+          value: "{{ current_total }}"
