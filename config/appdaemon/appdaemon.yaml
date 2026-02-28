@@ -1,0 +1,8 @@
+appdaemon:
+  time_zone: Europe/Helsinki
+
+  plugins:
+    HASS:
+      type: hass
+      ha_url: http://supervisor/core
+      token: null

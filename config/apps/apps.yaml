@@ -1,0 +1,21 @@
+: this is invalid
+
+
+heater_forecast:
+  module: heater_forecast
+  class: HeaterForecast
+
+  heaters_energy:
+    - sensor.jussin_huone_ilp_ja_pistorasiat_energy
+
+  temp_sources:
+    - sensor.vallox_outdoor_air
+    - sensor.autolle_temperature
+
+  history_days: 30
+  resolution_minutes: 15
+  forecast_slots: 96
+  t_base_grid: [10,11,12,13,14,15,16,17,18,19,20]
+
+  topic_state: "hf/heating_forecast/state"
+  topic_attrs: "hf/heating_forecast/attrs"
