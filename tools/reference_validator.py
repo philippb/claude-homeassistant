@@ -336,6 +336,11 @@ class ReferenceValidator:
                         entities.update(self._extract_template_entities(item))
                 elif isinstance(template_data, dict):
                     entities.update(self._extract_template_entities(template_data))
+                elif isinstance(template_data, str) and template_data.startswith("!"):
+                    # Resolve !include, !include_dir_merge_list, !include_dir_list
+                    entities.update(
+                        self._extract_included_template_entities(template_data)
+                    )
 
             # Extract sensors/binary_sensors defined directly
             for sensor_type in ["sensor", "binary_sensor"]:
@@ -402,6 +407,57 @@ class ReferenceValidator:
                                 if object_id:
                                     entities.add(f"{entity_type}.{object_id}")
 
+        return entities
+
+    def _extract_included_template_entities(self, include_value: str) -> Set[str]:
+        """Extract template entities from !include_dir_merge_list / !include directives.
+
+        When configuration.yaml uses ``template: !include_dir_merge_list templates/``
+        the custom YAML loader stores the tag as a plain string instead of following
+        the reference.  This method resolves the directory or file and extracts
+        template entity IDs from the referenced YAML files.
+
+        Supports:
+        - ``!include_dir_merge_list <dir>``
+        - ``!include_dir_list <dir>``
+        - ``!include <file>``
+        """
+        entities: Set[str] = set()
+
+        dir_prefixes = [
+            "!include_dir_merge_list ",
+            "!include_dir_list ",
+        ]
+        for prefix in dir_prefixes:
+            if include_value.startswith(prefix):
+                dirname = include_value[len(prefix) :].strip()
+                dir_path = self.config_dir / dirname
+                if dir_path.is_dir():
+                    for yaml_file in sorted(dir_path.glob("**/*.yaml")):
+                        entities.update(self._load_template_file(yaml_file))
+                return entities
+
+        if include_value.startswith("!include "):
+            filename = include_value[len("!include ") :].strip()
+            file_path = self.config_dir / filename
+            if file_path.is_file():
+                entities.update(self._load_template_file(file_path))
+
+        return entities
+
+    def _load_template_file(self, yaml_file: Path) -> Set[str]:
+        """Load a single template YAML file and extract entity IDs from it."""
+        entities: Set[str] = set()
+        try:
+            with open(yaml_file, "r", encoding="utf-8") as f:
+                file_data = yaml.load(f, Loader=HAYamlLoader)
+            if isinstance(file_data, list):
+                for item in file_data:
+                    entities.update(self._extract_template_entities(item))
+            elif isinstance(file_data, dict):
+                entities.update(self._extract_template_entities(file_data))
+        except Exception:
+            pass  # Silently ignore — YAML errors are caught by yaml_validator
         return entities
 
     def _extract_automation_entities(self) -> Set[str]:

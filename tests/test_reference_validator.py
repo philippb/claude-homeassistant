@@ -528,3 +528,152 @@ class TestBuiltinEntities:
         validator = ReferenceValidator(str(temp_config_dir))
 
         assert len(validator.BUILTIN_DOMAINS) == 0
+
+
+class TestIncludeDirMergeListTemplates:
+    """Tests for template entity extraction via !include_dir_merge_list and friends.
+
+    configuration.yaml commonly uses ``template: !include_dir_merge_list templates/``
+    to split template definitions across multiple files.  The custom YAML loader
+    represents those tags as plain strings, so the validator must resolve them
+    explicitly to discover the entities they define.
+    """
+
+    def _write_config_with_include(
+        self, config_dir: Path, directive: str = "!include_dir_merge_list templates/"
+    ) -> None:
+        """Write a configuration.yaml whose template key uses an include directive."""
+        # Write the raw string so it mimics what HAYamlLoader produces
+        (config_dir / "configuration.yaml").write_text(f"template: '{directive}'\n")
+
+    def test_sensor_in_template_file_recognised(self, temp_config_dir):
+        """Sensor defined in a templates/ file is treated as a valid entity."""
+        templates_dir = temp_config_dir / "templates"
+        templates_dir.mkdir()
+        climate_tmpl = [
+            {
+                "sensor": [
+                    {"name": "Heat Pump State", "state": "{{ 'off' }}"},
+                ]
+            }
+        ]
+        (templates_dir / "climate.yaml").write_text(yaml.dump(climate_tmpl))
+        self._write_config_with_include(temp_config_dir)
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        entities = validator.get_config_defined_entities()
+
+        assert "sensor.heat_pump_state" in entities
+
+    def test_binary_sensor_in_template_file_recognised(self, temp_config_dir):
+        """Trigger-based binary_sensor defined in templates/ is recognised."""
+        templates_dir = temp_config_dir / "templates"
+        templates_dir.mkdir()
+        # Mirrors the real 'Cooling Config Changed' trigger template
+        trigger_tmpl = [
+            {
+                "trigger": [{"platform": "state", "entity_id": "input_boolean.foo"}],
+                "binary_sensor": [
+                    {"name": "Cooling Config Changed", "state": "{{ True }}"},
+                ],
+            }
+        ]
+        (templates_dir / "climate.yaml").write_text(yaml.dump(trigger_tmpl))
+        self._write_config_with_include(temp_config_dir)
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        entities = validator.get_config_defined_entities()
+
+        assert "binary_sensor.cooling_config_changed" in entities
+
+    def test_multiple_template_files_all_scanned(self, temp_config_dir):
+        """Entities from all files in templates/ are discovered."""
+        templates_dir = temp_config_dir / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "climate.yaml").write_text(
+            yaml.dump(
+                [{"sensor": [{"name": "Indoor Temperature", "state": "{{ 20 }}"}]}]
+            )
+        )
+        (templates_dir / "energy.yaml").write_text(
+            yaml.dump(
+                [{"sensor": [{"name": "Excess Power L3", "state": "{{ 0.5 }}"}]}]
+            )
+        )
+        self._write_config_with_include(temp_config_dir)
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        entities = validator.get_config_defined_entities()
+
+        assert "sensor.indoor_temperature" in entities
+        assert "sensor.excess_power_l3" in entities
+
+    def test_include_single_file_recognised(self, temp_config_dir):
+        """``template: '!include templates.yaml'`` is also resolved."""
+        single_tmpl = [
+            {"sensor": [{"name": "School Night Sensor", "state": "{{ True }}"}]}
+        ]
+        (temp_config_dir / "templates.yaml").write_text(yaml.dump(single_tmpl))
+        self._write_config_with_include(
+            temp_config_dir, directive="!include templates.yaml"
+        )
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        entities = validator.get_config_defined_entities()
+
+        assert "sensor.school_night_sensor" in entities
+
+    def test_automation_referencing_template_entity_passes(self, temp_config_dir):
+        """Automation that uses a template-defined entity passes validation."""
+        templates_dir = temp_config_dir / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "presence.yaml").write_text(
+            yaml.dump(
+                [{"binary_sensor": [{"name": "School Night", "state": "{{ True }}"}]}]
+            )
+        )
+        self._write_config_with_include(temp_config_dir)
+
+        automations = [
+            {
+                "trigger": {
+                    "platform": "state",
+                    "entity_id": "binary_sensor.school_night",
+                    "to": "on",
+                },
+                "action": [],
+            }
+        ]
+        automations_file = temp_config_dir / "automations.yaml"
+        automations_file.write_text(yaml.dump(automations))
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        assert validator.validate_file_references(automations_file)
+        assert not validator.errors
+
+    def test_unknown_entity_still_fails(self, temp_config_dir):
+        """A truly unknown entity still produces a validation error (regression guard)."""
+        templates_dir = temp_config_dir / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "climate.yaml").write_text(
+            yaml.dump([{"sensor": [{"name": "Known Sensor", "state": "{{ 1 }}"}]}])
+        )
+        self._write_config_with_include(temp_config_dir)
+
+        config = {
+            "automation": [
+                {
+                    "trigger": {
+                        "platform": "state",
+                        "entity_id": "sensor.does_not_exist",
+                    },
+                    "action": [],
+                }
+            ]
+        }
+        test_file = temp_config_dir / "test_config.yaml"
+        test_file.write_text(yaml.dump(config))
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        assert not validator.validate_file_references(test_file)
+        assert "sensor.does_not_exist" in " ".join(validator.errors)
