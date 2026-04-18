@@ -465,5 +465,79 @@ class TestReferenceValidatorUUID(unittest.TestCase):
         self.assertEqual(len(self.validator.errors), 0)
 
 
+class TestConfigurationIncludes(unittest.TestCase):
+    """Entities declared in files pulled in via `!include` should be known."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.config_dir = Path(self.temp_dir)
+        (self.config_dir / ".storage").mkdir()
+        # Minimal empty registries — we only care about config-derived entities.
+        for name in ("core.entity_registry", "core.device_registry"):
+            (self.config_dir / ".storage" / name).write_text(
+                json.dumps({"version": 1, "data": {"entities": [], "devices": []}})
+            )
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir)
+
+    def _write(self, relative: str, content: str) -> None:
+        (self.config_dir / relative).write_text(content)
+
+    def _extract(self) -> set[str]:
+        v = ReferenceValidator(str(self.config_dir))
+        return v.get_config_defined_entities()
+
+    def test_utility_meter_inline_creates_sensors(self):
+        self._write("configuration.yaml", yaml.safe_dump({
+            "utility_meter": {
+                "daily_import": {"source": "sensor.grid_energy", "cycle": "daily"},
+                "monthly_export": {"source": "sensor.grid_energy_returned",
+                                   "cycle": "monthly"},
+            }
+        }))
+        entities = self._extract()
+        self.assertIn("sensor.daily_import", entities)
+        self.assertIn("sensor.monthly_export", entities)
+
+    def test_utility_meter_include_is_followed(self):
+        self._write("configuration.yaml", "utility_meter: !include utility_meters.yaml\n")
+        self._write("utility_meters.yaml", yaml.safe_dump({
+            "net_metering_import": {"source": "sensor.grid"},
+            "net_metering_export": {"source": "sensor.grid_returned"},
+        }))
+        entities = self._extract()
+        self.assertIn("sensor.net_metering_import", entities)
+        self.assertIn("sensor.net_metering_export", entities)
+
+    def test_template_include_is_followed(self):
+        self._write("configuration.yaml", "template: !include templates.yaml\n")
+        self._write("templates.yaml", yaml.safe_dump([{
+            "sensor": [{
+                "name": "Net Balance",
+                "default_entity_id": "sensor.net_balance",
+                "state": "{{ 0 }}",
+            }]
+        }]))
+        entities = self._extract()
+        self.assertIn("sensor.net_balance", entities)
+
+    def test_input_helper_include_is_followed(self):
+        self._write("configuration.yaml", "input_number: !include input_numbers.yaml\n")
+        self._write("input_numbers.yaml", yaml.safe_dump({
+            "heater_target": {"min": 15, "max": 30, "step": 0.5},
+            "lights_brightness": {"min": 0, "max": 100},
+        }))
+        entities = self._extract()
+        self.assertIn("input_number.heater_target", entities)
+        self.assertIn("input_number.lights_brightness", entities)
+
+    def test_missing_include_file_is_silent(self):
+        self._write("configuration.yaml", "utility_meter: !include does_not_exist.yaml\n")
+        # Must not crash and must simply yield no utility_meter-derived entities.
+        entities = self._extract()
+        self.assertFalse(any(e.startswith("sensor.") for e in entities))
+
+
 if __name__ == "__main__":
     unittest.main()

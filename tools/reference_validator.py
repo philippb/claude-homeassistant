@@ -291,6 +291,26 @@ class ReferenceValidator:
 
         return entities
 
+    def _resolve_include(self, value: Any) -> Any:
+        """Resolve an ``!include <filename>`` reference to its parsed contents.
+
+        ``HAYamlLoader`` stringifies ``!include foo.yaml`` as the literal
+        ``"!include foo.yaml"`` so the outer config stays readable. For entity
+        discovery we need the real data, so this helper loads the referenced
+        file on demand. Non-include values pass through unchanged.
+        """
+        if not isinstance(value, str) or not value.startswith("!include "):
+            return value
+        filename = value.split(" ", 1)[1].strip()
+        included_path = self.config_dir / filename
+        if not included_path.exists():
+            return None
+        try:
+            with open(included_path, "r", encoding="utf-8") as f:
+                return yaml.load(f, Loader=HAYamlLoader)
+        except Exception:
+            return None
+
     def _extract_from_configuration(self) -> Set[str]:
         """Extract entities defined in configuration.yaml."""
         entities: Set[str] = set()
@@ -314,7 +334,8 @@ class ReferenceValidator:
                     ):
                         entities.add(f"group.{group_name}")
 
-            # Extract input helpers
+            # Extract input helpers (with !include resolution so patterns like
+            # ``input_number: !include input_numbers.yaml`` are followed).
             for input_type in [
                 "input_boolean",
                 "input_number",
@@ -323,19 +344,34 @@ class ReferenceValidator:
                 "input_datetime",
                 "input_button",
             ]:
-                if input_type in data and isinstance(data[input_type], dict):
-                    for name in data[input_type].keys():
+                if input_type not in data:
+                    continue
+                helper_data = self._resolve_include(data[input_type])
+                if isinstance(helper_data, dict):
+                    for name in helper_data.keys():
                         if isinstance(name, str) and self._is_valid_object_id(name):
                             entities.add(f"{input_type}.{name}")
 
-            # Extract template entities
+            # Extract template entities (inline or !include).
             if "template" in data:
-                template_data = data["template"]
+                template_data = self._resolve_include(data["template"])
                 if isinstance(template_data, list):
                     for item in template_data:
                         entities.update(self._extract_template_entities(item))
                 elif isinstance(template_data, dict):
                     entities.update(self._extract_template_entities(template_data))
+
+            # Extract utility_meter entities. Each named block under the
+            # top-level ``utility_meter:`` key creates a ``sensor.<name>``
+            # entity. Supports inline or ``!include utility_meters.yaml``.
+            if "utility_meter" in data:
+                meter_data = self._resolve_include(data["utility_meter"])
+                if isinstance(meter_data, dict):
+                    for meter_name in meter_data.keys():
+                        if isinstance(meter_name, str) and self._is_valid_object_id(
+                            meter_name
+                        ):
+                            entities.add(f"sensor.{meter_name}")
 
             # Extract sensors/binary_sensors defined directly
             for sensor_type in ["sensor", "binary_sensor"]:
