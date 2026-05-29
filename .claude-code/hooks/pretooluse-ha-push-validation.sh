@@ -1,8 +1,17 @@
 #!/bin/bash
 # Pre-tool-use hook to validate Home Assistant configuration before pushing
 
+# Determine the HA config directory, honoring LOCAL_CONFIG_PATH (env or .env),
+# falling back to the default "config". Mirrors the Makefile behaviour.
+CONFIG_PATH="${LOCAL_CONFIG_PATH:-}"
+if [ -z "$CONFIG_PATH" ] && [ -f ".env" ]; then
+    CONFIG_PATH=$(grep -E '^LOCAL_CONFIG_PATH=' .env | tail -1 | cut -d= -f2- | tr -d '"'\''')
+fi
+CONFIG_PATH="${CONFIG_PATH:-config}"
+CONFIG_PATH="${CONFIG_PATH%/}"  # strip trailing slash
+
 # Check if we're in a home assistant config project and about to run a push/sync command
-if [ ! -f "config/configuration.yaml" ]; then
+if [ ! -f "$CONFIG_PATH/configuration.yaml" ]; then
     exit 0  # Not a HA project, skip
 fi
 
@@ -21,7 +30,7 @@ if [[ "$CLAUDE_TOOL_NAME" == "Bash" ]]; then
 
         # Run validation (we're already in project root)
         source venv/bin/activate
-        python tools/run_tests.py
+        python tools/run_tests.py "$CONFIG_PATH"
 
         validation_result=$?
 

@@ -96,7 +96,14 @@ LOCAL_CONFIG_PATH=config/
 BACKUP_DIR=backups
 VENV_PATH=venv
 TOOLS_PATH=tools
+PYTHON=python3
 ```
+
+> **Tip:** `LOCAL_CONFIG_PATH` may point anywhere — e.g. a separate
+> (private, local) git repo holding your real HA config — and all
+> `make` targets (pull/push/validate/entities) operate on that path.
+> Set `PYTHON` if your Home Assistant version needs a specific
+> interpreter (e.g. `PYTHON=python3.14` for HA 2026.3+).
 
 #### 2b. Set Up SSH Access to Home Assistant
 
@@ -372,12 +379,14 @@ The entity explorer helps you understand what's available:
 ### Build Error: lru-dict or Other C Extensions (macOS)
 If you see errors like `Building wheel for lru-dict... error` during `make setup`, you likely have an old Python version from Xcode Command Line Tools.
 
-**Solution**: Install Python 3.12+ via Homebrew:
+**Solution**: Install a recent Python via Homebrew (3.12+):
 ```bash
 brew install python@3.12
 export PATH="/opt/homebrew/bin:$PATH"
 ```
-Then run `make setup` again. Home Assistant 2024.x requires Python 3.12+.
+Then run `make setup` again. Your venv's `homeassistant` should match your live
+instance — newer HA needs newer Python (e.g. HA 2026.3+ requires Python 3.14).
+Select the interpreter with `PYTHON=` in `.env` (e.g. `PYTHON=python3.14`).
 
 ### Validation Errors
 1. Check YAML syntax first: `. venv/bin/activate && python tools/yaml_validator.py`
