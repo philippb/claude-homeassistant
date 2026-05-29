@@ -13,6 +13,9 @@ LOCAL_CONFIG_PATH ?= config/
 BACKUP_DIR ?= backups
 VENV_PATH ?= venv
 TOOLS_PATH ?= tools
+# Python interpreter used to create the venv. Override in .env if your Home
+# Assistant version needs a specific Python (e.g. PYTHON=python3.14 for HA 2026.3+).
+PYTHON ?= python3
 
 # Colors for output
 GREEN = \033[0;32m
@@ -62,7 +65,7 @@ push: check-env
 # Run all validation tests
 validate: check-setup
 	@echo "$(GREEN)Running Home Assistant configuration validation...$(NC)"
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/run_tests.py
+	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/run_tests.py $(LOCAL_CONFIG_PATH)
 
 # Alias for validate
 test: validate
@@ -79,7 +82,7 @@ backup:
 # Set up Python environment and dependencies
 setup:
 	@echo "$(GREEN)Setting up Python environment...$(NC)"
-	@python3 -m venv $(VENV_PATH)
+	@$(PYTHON) -m venv $(VENV_PATH)
 	@. $(VENV_PATH)/bin/activate && pip install --upgrade pip
 	@. $(VENV_PATH)/bin/activate && pip install homeassistant voluptuous pyyaml jsonschema requests
 	@echo "$(GREEN)Setup complete!$(NC)"
@@ -103,7 +106,7 @@ status: check-setup
 	fi
 	@echo ""
 	@echo "$(YELLOW)Entity Summary:$(NC)"
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reference_validator.py 2>/dev/null | grep "Examples:" -A 1 -B 1 | head -20
+	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reference_validator.py $(LOCAL_CONFIG_PATH) 2>/dev/null | grep "Examples:" -A 1 -B 1 | head -20
 
 # Explore available Home Assistant entities
 entities: check-setup
@@ -115,7 +118,7 @@ entities: check-setup
 	@echo "  make entities ARGS='--search temp'     - Search for temperature entities"
 	@echo "  make entities ARGS='--full'            - Show complete detailed output"
 	@echo ""
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/entity_explorer.py $(ARGS)
+	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/entity_explorer.py --config $(LOCAL_CONFIG_PATH) $(ARGS)
 
 # Reload Home Assistant configuration via API
 reload: check-setup
@@ -204,13 +207,13 @@ pull-storage:
 
 # Individual validation targets
 validate-yaml: check-setup
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/yaml_validator.py
+	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/yaml_validator.py $(LOCAL_CONFIG_PATH)
 
 validate-references: check-setup
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reference_validator.py
+	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reference_validator.py $(LOCAL_CONFIG_PATH)
 
 validate-ha: check-setup
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/ha_official_validator.py
+	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/ha_official_validator.py $(LOCAL_CONFIG_PATH)
 
 # SSH connectivity test
 test-ssh:

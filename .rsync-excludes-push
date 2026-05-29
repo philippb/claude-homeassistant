@@ -3,8 +3,10 @@
 # MORE RESTRICTIVE - Protect HA's runtime state!
 # ===========================================
 
-# Database and log files
+# Database and log files (never overwrite HA's live databases)
 home-assistant_v2.db*
+zigbee.db*
+*.db
 *.db-shm
 *.db-wal
 *.log*
@@ -14,11 +16,14 @@ custom_components/
 custom_icons/
 themes/
 
-# Runtime/cache directories
+# Runtime/cache directories and HA-managed state files
 .cloud/
 deps/
 tts/
 .uuid
+.HA_VERSION
+.ha_run.lock
+@eaDir/
 __pycache__/
 
 # Large directories not needed for config management
