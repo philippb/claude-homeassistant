@@ -1,0 +1,315 @@
+title: Cradlewise
+views:
+  - title: Main
+    path: main
+    icon: mdi:baby-carriage
+    type: masonry
+    cards:
+      - type: picture-entity
+        entity: camera.cradlewise_avo_crib_camera
+        camera_image: camera.cradlewise_avo_crib_camera
+        show_name: false
+        show_state: false
+        aspect_ratio: "56.25%"
+
+      - type: grid
+        columns: 3
+        square: false
+        cards:
+          - type: tile
+            entity: sensor.cradlewise_avo_sleep_phase
+            name: Sleep Phase
+            icon: mdi:sleep
+          - type: tile
+            entity: binary_sensor.cradlewise_avo_baby_present
+            name: In Crib
+            icon: mdi:baby-face-outline
+          - type: gauge
+            entity: sensor.baby_sleep_efficiency
+            name: Efficiency
+            min: 0
+            max: 100
+            unit: "%"
+            severity:
+              green: 70
+              yellow: 50
+              red: 0
+
+      - type: grid
+        columns: 3
+        square: false
+        cards:
+          - type: tile
+            entity: switch.cradlewise_avo_rocking
+            name: Rocking
+            icon: mdi:baby-carriage
+          - type: tile
+            entity: switch.cradlewise_avo_music
+            name: White Noise
+            icon: mdi:music-note
+          - type: tile
+            entity: switch.cradlewise_avo_night_light
+            name: Night Light
+            icon: mdi:lightbulb-night
+          - type: tile
+            entity: binary_sensor.cradlewise_avo_baby_needs_attention
+            name: Needs Attention
+            icon: mdi:alert-circle-outline
+          - type: tile
+            entity: binary_sensor.cradlewise_avo_baby_needs_help
+            name: Needs Help
+            icon: mdi:help-circle-outline
+          - type: tile
+            entity: binary_sensor.cradlewise_avo_online
+            name: Online
+            icon: mdi:wifi
+
+      - type: entities
+        title: Status
+        icon: mdi:information-outline
+        entities:
+          - entity: sensor.cradlewise_avo_sleep_phase
+            name: Sleep Phase
+          - entity: sensor.cradlewise_avo_sleep_state
+            name: Sleep State
+          - entity: binary_sensor.cradlewise_avo_bouncing
+            name: Bouncing
+          - entity: binary_sensor.cradlewise_avo_music_playing
+            name: Sound Playing
+          - entity: binary_sensor.cradlewise_avo_crib_soothing
+            name: Crib Soothing
+          - entity: binary_sensor.cradlewise_avo_loud_sound_detected
+            name: Loud Sound
+          - entity: binary_sensor.cradlewise_avo_in_sleep_schedule
+            name: Sleep Schedule
+          - entity: binary_sensor.cradlewise_avo_in_soothing_window
+            name: Soothing Window
+          - entity: binary_sensor.cradlewise_avo_rocking_not_effective
+            name: Rocking Ineffective
+
+      - type: entities
+        title: Environment
+        icon: mdi:thermometer
+        entities:
+          - entity: sensor.cradlewise_avo_room_temperature
+            name: Temperature
+          - entity: sensor.cradlewise_avo_humidity
+            name: Humidity
+          - entity: sensor.cradlewise_avo_noise_level
+            name: Noise Level
+          - entity: sensor.cradlewise_avo_firmware_version
+            name: Firmware
+
+      - type: custom:cradlewise-audio-card
+
+  - title: Naps & Care
+    path: naps-care
+    icon: mdi:clock-outline
+    type: masonry
+    cards:
+      - type: horizontal-stack
+        cards:
+          - type: entity
+            entity: sensor.cradlewise_avo_total_sleep_today
+            name: Total Sleep
+            icon: mdi:sleep
+          - type: entity
+            entity: sensor.cradlewise_avo_total_awake_today
+            name: Total Awake
+            icon: mdi:weather-sunny
+          - type: entity
+            entity: sensor.cradlewise_avo_nap_count_today
+            name: Naps Today
+            icon: mdi:counter
+
+      - type: entities
+        title: Nap Schedule
+        icon: mdi:clock-outline
+        entities:
+          - entity: sensor.next_nap_prediction
+            name: Next Nap
+          - entity: sensor.baby_awake_duration
+            name: Awake Duration
+          - entity: sensor.cradlewise_avo_last_nap_started
+            name: Last Nap Started
+          - entity: sensor.cradlewise_avo_last_nap_ended
+            name: Last Nap Ended
+          - entity: sensor.cradlewise_avo_wake_up_time
+            name: Wake Up Time
+          - entity: sensor.cradlewise_avo_longest_nap_today
+            name: Longest Nap Today
+          - entity: sensor.cradlewise_avo_soothing_count_today
+            name: Soothe Count Today
+          - entity: input_number.baby_wake_window_minutes
+            name: Wake Window Setting
+
+      - type: entities
+        title: Care Log
+        icon: mdi:notebook-outline
+        entities:
+          - entity: input_button.baby_log_feeding
+            name: Log Feeding Now
+          - entity: input_datetime.baby_last_feeding
+            name: Last Feeding
+          - entity: counter.baby_feeding_count_today
+            name: Feedings Today
+          - type: divider
+          - entity: input_button.baby_log_diaper
+            name: Log Diaper Now
+          - entity: input_datetime.baby_last_diaper
+            name: Last Diaper Change
+          - entity: counter.baby_diaper_count_today
+            name: Diapers Today
+
+  - title: Controls
+    path: controls
+    icon: mdi:tune
+    type: masonry
+    cards:
+      - type: entities
+        title: Crib Controls
+        icon: mdi:baby-carriage
+        entities:
+          - entity: number.cradlewise_avo_rock_amplitude
+            name: Rock Amplitude
+          - entity: number.cradlewise_avo_music_volume
+            name: Volume
+          - entity: number.cradlewise_avo_light_intensity
+            name: Light Intensity
+          - entity: number.cradlewise_avo_responsivity
+            name: Responsivity
+          - entity: number.cradlewise_avo_bounce_duration
+            name: Bounce Duration
+          - type: divider
+          - entity: switch.cradlewise_avo_auto_amplitude
+            name: Auto Amplitude
+          - entity: switch.cradlewise_avo_auto_volume
+            name: Auto Volume
+          - entity: switch.cradlewise_avo_auto_sound_mood
+            name: Auto Sound Mode
+          - entity: switch.cradlewise_avo_keep_music_during_sleep
+            name: Music During Sleep
+          - entity: switch.cradlewise_avo_adaptive_soothing
+            name: Adaptive Soothing
+          - entity: switch.cradlewise_avo_keep_bounce_during_sleep
+            name: Keep Bounce During Sleep
+          - entity: select.cradlewise_avo_sound_profile
+            name: Sound Profile
+
+  - title: Sleep Insights
+    path: sleep-insights
+    icon: mdi:chart-bar
+    type: masonry
+    cards:
+      - type: custom:cradlewise-sleep-card
+        name: Avo
+
+  - title: Lullabies
+    path: lullabies
+    icon: mdi:music-note
+    type: masonry
+    cards:
+      - type: custom:cradlewise-lullabies-card
+        name: Lullabies
+
+  - title: History
+    path: history
+    icon: mdi:chart-line
+    type: masonry
+    cards:
+      - type: history-graph
+        title: Sleep Today
+        hours_to_show: 24
+        entities:
+          - entity: sensor.cradlewise_avo_sleep_phase
+            name: Sleep Phase
+          - entity: binary_sensor.cradlewise_avo_baby_present
+            name: In Crib
+          - entity: switch.cradlewise_avo_rocking
+            name: Rocking
+          - entity: switch.cradlewise_avo_music
+            name: Sound
+
+      - type: statistics-graph
+        title: Sleep Efficiency (7 days)
+        days_to_show: 7
+        stat_types:
+          - mean
+        entities:
+          - entity: sensor.baby_sleep_efficiency
+            name: Efficiency
+
+      - type: statistics-graph
+        title: Total Sleep Per Day
+        days_to_show: 7
+        stat_types:
+          - mean
+          - max
+        entities:
+          - entity: sensor.cradlewise_avo_total_sleep_today
+            name: Total Sleep
+
+      - type: history-graph
+        title: Environment (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.cradlewise_avo_room_temperature
+            name: Temperature
+          - entity: sensor.cradlewise_avo_humidity
+            name: Humidity
+
+  - title: Explore
+    path: explore
+    icon: mdi:book-open-outline
+    type: masonry
+    cards:
+      - type: markdown
+        title: Explore
+        content: |
+          ## Baby Sleep Tips
+
+          **Newborns (0–3 months)**
+          - Total sleep: 14–17 hours/day
+          - Wake windows: 45–60 minutes
+          - Watch for sleepy cues: yawning, eye rubbing, looking away
+
+          **Infants (3–6 months)**
+          - Total sleep: 12–16 hours/day
+          - Wake windows: 1.5–2.5 hours
+          - Introduce bedtime routine
+
+          **Older Infants (6–12 months)**
+          - Total sleep: 12–16 hours/day
+          - 2 naps/day typical
+          - Wake windows: 2–3.5 hours
+
+          ---
+
+          ## White Noise Guide
+
+          | Profile | Best for |
+          |---|---|
+          | White Noise | General calming, falling asleep |
+          | Deep Sleeper | Heavy sleepers, loud environments |
+          | Noisy Room | Masking household noise |
+          | Sensitive Sleeper | Light sleepers, gentle transitions |
+
+  - title: Inbox
+    path: inbox
+    icon: mdi:bell-outline
+    type: masonry
+    cards:
+      - type: logbook
+        title: Baby Activity
+        hours_to_show: 24
+        entities:
+          - sensor.cradlewise_avo_sleep_phase
+          - binary_sensor.cradlewise_avo_baby_present
+          - binary_sensor.cradlewise_avo_baby_needs_attention
+          - binary_sensor.cradlewise_avo_baby_needs_help
+          - binary_sensor.cradlewise_avo_crib_soothing
+          - binary_sensor.cradlewise_avo_loud_sound_detected
+          - switch.cradlewise_avo_rocking
+          - switch.cradlewise_avo_music
+          - input_button.baby_log_feeding
+          - input_button.baby_log_diaper
