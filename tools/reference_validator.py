@@ -314,7 +314,7 @@ class ReferenceValidator:
                     ):
                         entities.add(f"group.{group_name}")
 
-            # Extract input helpers
+            # Extract input helpers and counter entities
             for input_type in [
                 "input_boolean",
                 "input_number",
@@ -322,6 +322,7 @@ class ReferenceValidator:
                 "input_select",
                 "input_datetime",
                 "input_button",
+                "counter",
             ]:
                 if input_type in data and isinstance(data[input_type], dict):
                     for name in data[input_type].keys():
