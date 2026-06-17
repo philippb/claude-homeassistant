@@ -1,0 +1,167 @@
+title: Baby Monitor
+views:
+  - title: Overview
+    path: overview
+    icon: mdi:baby-carriage
+    cards:
+      - type: horizontal-stack
+        cards:
+          - type: entity
+            entity: sensor.cradlewise_avo_sleep_phase
+            name: Sleep Phase
+            icon: mdi:sleep
+          - type: entity
+            entity: sensor.cradlewise_avo_sleep_state
+            name: State
+          - type: entity
+            entity: binary_sensor.cradlewise_avo_baby_present
+            name: In Crib
+            icon: mdi:baby-carriage
+
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            entity: sensor.baby_sleep_efficiency
+            name: Sleep Efficiency
+            min: 0
+            max: 100
+            unit: "%"
+            severity:
+              green: 70
+              yellow: 50
+              red: 0
+          - type: entity
+            entity: sensor.cradlewise_avo_total_sleep_today
+            name: Total Sleep
+            icon: mdi:sleep
+          - type: entity
+            entity: sensor.cradlewise_avo_nap_count_today
+            name: Naps Today
+            icon: mdi:counter
+
+      - type: entities
+        title: Nap Schedule
+        icon: mdi:clock-outline
+        entities:
+          - entity: sensor.next_nap_prediction
+            name: Next Nap
+          - entity: sensor.baby_awake_duration
+            name: Awake Duration
+          - entity: sensor.cradlewise_avo_last_nap_started
+            name: Last Nap Started
+          - entity: sensor.cradlewise_avo_last_nap_ended
+            name: Last Nap Ended
+          - entity: sensor.cradlewise_avo_wake_up_time
+            name: Wake Up Time
+          - entity: sensor.cradlewise_avo_longest_nap_today
+            name: Longest Nap Today
+          - entity: input_number.baby_wake_window_minutes
+            name: Wake Window Setting
+
+      - type: horizontal-stack
+        cards:
+          - type: sensor
+            entity: sensor.cradlewise_avo_room_temperature
+            name: Room Temp
+            graph: line
+          - type: sensor
+            entity: sensor.cradlewise_avo_humidity
+            name: Humidity
+            graph: line
+          - type: sensor
+            entity: sensor.cradlewise_avo_noise_level
+            name: Noise Level
+            graph: line
+
+      - type: entities
+        title: Alerts
+        icon: mdi:bell-alert
+        entities:
+          - entity: binary_sensor.cradlewise_avo_baby_needs_attention
+            name: Needs Attention
+          - entity: binary_sensor.cradlewise_avo_baby_needs_help
+            name: Needs Help
+          - entity: binary_sensor.cradlewise_avo_loud_sound_detected
+            name: Loud Sound
+          - entity: binary_sensor.cradlewise_avo_rocking_not_effective
+            name: Rocking Not Effective
+          - entity: binary_sensor.cradlewise_avo_in_soothing_window
+            name: In Soothing Window
+
+      - type: entities
+        title: Crib Controls
+        icon: mdi:baby-carriage
+        entities:
+          - entity: switch.cradlewise_avo_rocking
+            name: Rocking
+          - entity: switch.cradlewise_avo_music
+            name: Music
+          - entity: switch.cradlewise_avo_night_light
+            name: Night Light
+          - entity: switch.cradlewise_avo_adaptive_soothing
+            name: Adaptive Soothing
+          - entity: number.cradlewise_avo_rock_amplitude
+            name: Rock Amplitude
+          - entity: number.cradlewise_avo_music_volume
+            name: Music Volume
+          - entity: select.cradlewise_avo_sound_profile
+            name: Sound Profile
+
+      - type: entities
+        title: Care Log
+        icon: mdi:notebook-outline
+        entities:
+          - entity: input_button.baby_log_feeding
+            name: Log Feeding Now
+          - entity: input_datetime.baby_last_feeding
+            name: Last Feeding
+          - entity: counter.baby_feeding_count_today
+            name: Feedings Today
+          - type: divider
+          - entity: input_button.baby_log_diaper
+            name: Log Diaper Now
+          - entity: input_datetime.baby_last_diaper
+            name: Last Diaper Change
+          - entity: counter.baby_diaper_count_today
+            name: Diapers Today
+
+  - title: History
+    path: history
+    icon: mdi:chart-line
+    cards:
+      - type: history-graph
+        title: Sleep Today
+        entities:
+          - entity: sensor.cradlewise_avo_sleep_phase
+            name: Sleep Phase
+          - entity: sensor.cradlewise_avo_sleep_state
+            name: State
+        hours_to_show: 24
+
+      - type: statistics-graph
+        title: Sleep Efficiency (7 days)
+        entities:
+          - entity: sensor.baby_sleep_efficiency
+            name: Efficiency
+        days_to_show: 7
+        stat_types:
+          - mean
+
+      - type: statistics-graph
+        title: Total Sleep Per Day
+        entities:
+          - entity: sensor.cradlewise_avo_total_sleep_today
+            name: Total Sleep
+        days_to_show: 7
+        stat_types:
+          - mean
+          - max
+
+      - type: history-graph
+        title: Environment (24h)
+        entities:
+          - entity: sensor.cradlewise_avo_room_temperature
+            name: Temperature
+          - entity: sensor.cradlewise_avo_humidity
+            name: Humidity
+        hours_to_show: 24

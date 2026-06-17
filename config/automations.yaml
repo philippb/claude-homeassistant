@@ -363,6 +363,176 @@
   mode: queued
   max: 10
 
+- id: cradlewise_baby_distress_alert
+  alias: "Cradlewise: Baby Distress Alert"
+  description: >
+    Push notification when baby is present and needs attention, needs help,
+    or a loud sustained sound is detected — smarter than a single sensor.
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.cradlewise_avo_baby_needs_attention
+      to: "on"
+    - trigger: state
+      entity_id: binary_sensor.cradlewise_avo_baby_needs_help
+      to: "on"
+    - trigger: state
+      entity_id: binary_sensor.cradlewise_avo_loud_sound_detected
+      to: "on"
+      for: "00:00:10"
+  conditions:
+    - condition: state
+      entity_id: binary_sensor.cradlewise_avo_baby_present
+      state: "on"
+    - condition: or
+      conditions:
+        - condition: state
+          entity_id: binary_sensor.cradlewise_avo_baby_needs_attention
+          state: "on"
+        - condition: state
+          entity_id: binary_sensor.cradlewise_avo_baby_needs_help
+          state: "on"
+        - condition: state
+          entity_id: binary_sensor.cradlewise_avo_loud_sound_detected
+          state: "on"
+  actions:
+    - variables:
+        reason: >
+          {% if is_state('binary_sensor.cradlewise_avo_baby_needs_help', 'on') %}
+            Baby needs help!
+          {% elif is_state('binary_sensor.cradlewise_avo_baby_needs_attention', 'on') %}
+            Baby needs attention.
+          {% else %}
+            Sustained loud sound in crib.
+          {% endif %}
+        noise: "{{ states('sensor.cradlewise_avo_noise_level') }}"
+        phase: "{{ states('sensor.cradlewise_avo_sleep_phase') }}"
+    - service: notify.mobile_app_pixel_9_pro_fold
+      data:
+        title: "Baby Alert"
+        message: "{{ reason }} (phase: {{ phase }}, noise: {{ noise }})"
+        data:
+          ttl: 0
+          priority: high
+          tag: baby_alert
+    - service: notify.mobile_app_pixel_fold
+      data:
+        title: "Baby Alert"
+        message: "{{ reason }} (phase: {{ phase }}, noise: {{ noise }})"
+        data:
+          ttl: 0
+          priority: high
+          tag: baby_alert
+    - service: notify.mobile_app_samsung
+      data:
+        title: "Baby Alert"
+        message: "{{ reason }} (phase: {{ phase }}, noise: {{ noise }})"
+        data:
+          ttl: 0
+          priority: high
+          tag: baby_alert
+  mode: single
+
+- id: cradlewise_next_nap_reminder
+  alias: "Cradlewise: Next Nap Reminder"
+  description: >
+    Notifies when baby has been awake for 80% of the configured wake window.
+    Adjust input_number.baby_wake_window_minutes to match your baby's schedule.
+  triggers:
+    - trigger: time_pattern
+      minutes: "/5"
+  conditions:
+    - condition: state
+      entity_id: binary_sensor.cradlewise_avo_baby_present
+      state: "on"
+    - condition: not
+      conditions:
+        - condition: state
+          entity_id: sensor.cradlewise_avo_sleep_phase
+          state: "sleep"
+    - condition: template
+      value_template: >
+        {% set last_end = states('sensor.cradlewise_avo_last_nap_ended') %}
+        {% set window = states('input_number.baby_wake_window_minutes') | float(90) %}
+        {% if last_end not in ['unknown', 'unavailable', 'none', ''] %}
+          {% set awake = (now() - as_datetime(last_end)).total_seconds() / 60 %}
+          {{ awake >= (window * 0.8) and awake < window }}
+        {% else %}
+          false
+        {% endif %}
+  actions:
+    - variables:
+        awake_mins: >
+          {% set last_end = states('sensor.cradlewise_avo_last_nap_ended') %}
+          {{ ((now() - as_datetime(last_end)).total_seconds() / 60) | round(0) | int }}
+        mins_until: >
+          {% set last_end = states('sensor.cradlewise_avo_last_nap_ended') %}
+          {% set window = states('input_number.baby_wake_window_minutes') | float(90) %}
+          {{ (window - (now() - as_datetime(last_end)).total_seconds() / 60) | round(0) | int }}
+    - service: notify.mobile_app_pixel_9_pro_fold
+      data:
+        title: "Nap Time Soon"
+        message: "Baby awake {{ awake_mins }} min — nap in ~{{ mins_until }} min."
+    - service: notify.mobile_app_pixel_fold
+      data:
+        title: "Nap Time Soon"
+        message: "Baby awake {{ awake_mins }} min — nap in ~{{ mins_until }} min."
+    - service: notify.mobile_app_samsung
+      data:
+        title: "Nap Time Soon"
+        message: "Baby awake {{ awake_mins }} min — nap in ~{{ mins_until }} min."
+  mode: single
+
+- id: cradlewise_log_feeding
+  alias: "Cradlewise: Log Feeding"
+  description: Records feeding time and increments today's count.
+  triggers:
+    - trigger: state
+      entity_id: input_button.baby_log_feeding
+  actions:
+    - service: input_datetime.set_datetime
+      target:
+        entity_id: input_datetime.baby_last_feeding
+      data:
+        datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+    - service: counter.increment
+      target:
+        entity_id: counter.baby_feeding_count_today
+  mode: queued
+  max: 5
+
+- id: cradlewise_log_diaper
+  alias: "Cradlewise: Log Diaper"
+  description: Records diaper change time and increments today's count.
+  triggers:
+    - trigger: state
+      entity_id: input_button.baby_log_diaper
+  actions:
+    - service: input_datetime.set_datetime
+      target:
+        entity_id: input_datetime.baby_last_diaper
+      data:
+        datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+    - service: counter.increment
+      target:
+        entity_id: counter.baby_diaper_count_today
+  mode: queued
+  max: 5
+
+- id: cradlewise_reset_daily_counters
+  alias: "Cradlewise: Reset Daily Counters"
+  description: Resets feeding and diaper counters at midnight.
+  triggers:
+    - trigger: time
+      at: "00:00:00"
+  actions:
+    - service: counter.reset
+      target:
+        entity_id: counter.baby_feeding_count_today
+    - service: counter.reset
+      target:
+        entity_id: counter.baby_diaper_count_today
+  mode: single
+
 - id: cradlewise_after_sleep
   alias: Cradlewise After Sleep
   description: When baby falls asleep, reduce rock amplitude and lower music volume.

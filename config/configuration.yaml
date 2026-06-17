@@ -263,6 +263,57 @@ template:
           {% set tier2 = [0, total_ccf - tier1_limit] | max %}
           {{ ((tier1 * 4.7924 + tier2 * 7.1528) * 1.057) | round(2) }}
 
+  - sensor:
+      - name: "Baby Sleep Efficiency"
+        unique_id: baby_sleep_efficiency
+        unit_of_measurement: "%"
+        icon: mdi:sleep
+        state: >
+          {% set sleep = states('sensor.cradlewise_avo_total_sleep_today') | float(0) %}
+          {% set awake = states('sensor.cradlewise_avo_total_awake_today') | float(0) %}
+          {% set total = sleep + awake %}
+          {{ (sleep / total * 100) | round(1) if total > 0 else 0 }}
+
+      - name: "Baby Awake Duration"
+        unique_id: baby_awake_duration
+        unit_of_measurement: "min"
+        icon: mdi:baby-face-outline
+        state: >
+          {% set last_end = states('sensor.cradlewise_avo_last_nap_ended') %}
+          {% if last_end not in ['unknown', 'unavailable', 'none', ''] %}
+            {{ ((now() - as_datetime(last_end)).total_seconds() / 60) | round(0) | int }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: "Next Nap Prediction"
+        unique_id: next_nap_prediction
+        icon: mdi:clock-outline
+        state: >
+          {% set last_end = states('sensor.cradlewise_avo_last_nap_ended') %}
+          {% set window = states('input_number.baby_wake_window_minutes') | float(90) %}
+          {% if last_end not in ['unknown', 'unavailable', 'none', ''] %}
+            {% set mins_away = ((as_timestamp(last_end) + window * 60 - as_timestamp(now())) / 60) | round(0) | int %}
+            {% if mins_away <= 0 %}
+              Now
+            {% elif mins_away < 60 %}
+              In {{ mins_away }} min
+            {% else %}
+              In {{ (mins_away / 60) | round(1) }}h
+            {% endif %}
+          {% else %}
+            Unknown
+          {% endif %}
+        attributes:
+          predicted_time: >
+            {% set last_end = states('sensor.cradlewise_avo_last_nap_ended') %}
+            {% set window = states('input_number.baby_wake_window_minutes') | float(90) %}
+            {% if last_end not in ['unknown', 'unavailable', 'none', ''] %}
+              {{ (as_timestamp(last_end) + window * 60) | timestamp_custom('%-I:%M %p') }}
+            {% else %}
+              Unknown
+            {% endif %}
+
 sensor:
   - platform: integration
     name: Grid Import Energy
@@ -292,6 +343,12 @@ lovelace:
       icon: mdi:water
       show_in_sidebar: true
       filename: lovelace_water.yaml
+    lovelace-baby:
+      mode: yaml
+      title: Baby Monitor
+      icon: mdi:baby-carriage
+      show_in_sidebar: true
+      filename: lovelace_baby.yaml
 
 my:
 
@@ -309,6 +366,48 @@ mqtt:
       unit_of_measurement: "fps"
       expire_after: 300
       icon: mdi:camera
+
+input_number:
+  baby_wake_window_minutes:
+    name: "Baby Wake Window"
+    min: 30
+    max: 240
+    step: 5
+    initial: 90
+    unit_of_measurement: min
+    icon: mdi:timer-outline
+
+input_datetime:
+  baby_last_feeding:
+    name: "Last Feeding"
+    has_date: true
+    has_time: true
+    icon: mdi:bottle-tonic
+  baby_last_diaper:
+    name: "Last Diaper Change"
+    has_date: true
+    has_time: true
+    icon: mdi:baby-face-outline
+
+input_button:
+  baby_log_feeding:
+    name: "Log Feeding Now"
+    icon: mdi:bottle-tonic
+  baby_log_diaper:
+    name: "Log Diaper Now"
+    icon: mdi:baby-face-outline
+
+counter:
+  baby_feeding_count_today:
+    name: "Feedings Today"
+    icon: mdi:bottle-tonic
+    step: 1
+    minimum: 0
+  baby_diaper_count_today:
+    name: "Diapers Today"
+    icon: mdi:baby-face-outline
+    step: 1
+    minimum: 0
 
 logger:
   default: warning
