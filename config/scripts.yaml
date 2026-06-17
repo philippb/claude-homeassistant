@@ -1,52 +1,28 @@
-# Example Home Assistant Scripts
-# These are reusable sequences that can be called from automations or manually
-
-good_morning:
-  alias: "Good Morning Routine"
-  description: "Morning startup sequence"
+cradlewise_start_recipe:
+  alias: Cradlewise Start Recipe
+  description: Turns on rocking and music for a set duration, then turns them off.
+  fields:
+    duration_minutes:
+      description: How long to run the recipe (minutes)
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 60
+          unit_of_measurement: min
   sequence:
-    - service: light.turn_on
+    - service: switch.turn_on
       target:
-        area_id: bedroom
-      data:
-        brightness_pct: 30
-    - delay: '00:00:30'
-    - service: media_player.volume_set
+        entity_id: switch.cradlewise_avo_rocking
+    - service: switch.turn_on
       target:
-        entity_id: media_player.bedroom_speaker
-      data:
-        volume_level: 0.3
-    - service: media_player.play_media
+        entity_id: switch.cradlewise_avo_music
+    - delay: "00:{{ '%02d' | format(duration_minutes | int) }}:00"
+    - service: switch.turn_off
       target:
-        entity_id: media_player.bedroom_speaker
-      data:
-        media_content_id: "https://example.com/morning_playlist"
-        media_content_type: "music"
-
-good_night:
-  alias: "Good Night Routine"
-  description: "Evening shutdown sequence"
-  sequence:
-    - service: light.turn_off
+        entity_id: switch.cradlewise_avo_rocking
+    - service: switch.turn_off
       target:
-        area_id: living_room
-    - service: climate.set_temperature
-      target:
-        entity_id: climate.main_thermostat
-      data:
-        temperature: 68
-    - service: lock.lock
-      target:
-        area_id: exterior
-
-security_check:
-  alias: "Security Check"
-  description: "Check all doors and windows"
-  sequence:
-    - service: notify.mobile_app
-      data:
-        title: "Security Check"
-        message: >
-          Front Door: {{ states('lock.front_door') }}
-          Back Door: {{ states('lock.back_door') }}
-          Security System: {{ states('alarm_control_panel.home_security') }}
+        entity_id: switch.cradlewise_avo_music
+  mode: single
+  icon: mdi:baby-carriage

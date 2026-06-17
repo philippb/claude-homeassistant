@@ -1,51 +1,427 @@
-# Example Home Assistant Automations
-# These are example automations showcasing common patterns
+- id: '1739820938593'
+  alias: Unplug Charger and Open Garage
+  description: ''
+  triggers:
+  - type: not_plugged_in
+    device_id: 20d71393cc0df02ee2cb7769c058e7d1
+    entity_id: 31d020fb165bd9182e90524919396853
+    domain: binary_sensor
+    trigger: device
+  conditions:
+  - condition: device
+    device_id: 2bf38da62a980e17f0096efe27314644
+    domain: cover
+    entity_id: 351c43ad1b0df8d64158cfc5c78293ce
+    type: is_closed
+  - condition: time
+    after: 08:00:00
+    before: '20:00:00'
+    weekday:
+    - sun
+    - mon
+    - tue
+    - wed
+    - thu
+    - fri
+    - sat
+  actions:
+  - device_id: 2bf38da62a980e17f0096efe27314644
+    domain: cover
+    entity_id: 351c43ad1b0df8d64158cfc5c78293ce
+    type: open
+  mode: single
+- id: 'face_unlock_front_gate'
+  alias: Face Unlock Front Gate
+  description: >
+    Trusted faces auto-unlock. Guests with fewer samples get a notify-only
+    alert with an actionable Unlock button.
+  triggers:
+    - trigger: mqtt
+      topic: frigate/events
+  conditions:
+    - condition: state
+      entity_id: lock.door_c8ba
+      state: locked
+    - condition: template
+      value_template: >
+        {% set data = trigger.payload_json %}
+        {% set sub = data.after.sub_label %}
+        {% set name = (sub if sub is string else sub | first) | lower %}
+        {% set trusted = ['kai', 'sherry'] %}
+        {% set guests  = ['stacy'] %}
+        {{ data.type == 'update'
+           and data.after.camera == 'reolink_front_gate'
+           and data.after.label == 'person'
+           and sub is defined
+           and sub | length > 0
+           and name in trusted + guests }}
+  actions:
+    - variables:
+        recognized_name: >
+          {% set sub = trigger.payload_json.after.sub_label %}
+          {{ (sub if sub is string else sub | first) | title }}
+        is_trusted: >
+          {% set sub = trigger.payload_json.after.sub_label %}
+          {% set name = (sub if sub is string else sub | first) | lower %}
+          {{ name in ['kai', 'sherry'] }}
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ is_trusted }}"
+          sequence:
+            - service: select.select_option
+              target:
+                entity_id: select.front_gate_doorbell_play_quick_reply_message
+              data:
+                option: "welcome access grant"
+            - service: lock.unlock
+              target:
+                entity_id: lock.door_c8ba
+            - service: notify.mobile_app_pixel_9_pro_fold
+              data:
+                title: "Front Gate Unlocked"
+                message: "{{ recognized_name }} was recognized and unlocked the front gate."
+            - service: notify.mobile_app_pixel_fold
+              data:
+                title: "Front Gate Unlocked"
+                message: "{{ recognized_name }} was recognized and unlocked the front gate."
+            - service: notify.mobile_app_samsung
+              data:
+                title: "Front Gate Unlocked"
+                message: "{{ recognized_name }} was recognized and unlocked the front gate."
+            - service: notify.mobile_app_pixel_watch_4
+              data:
+                title: "Front Gate Unlocked"
+                message: "{{ recognized_name }} was recognized and unlocked the front gate."
+            - delay:
+                seconds: 10
+            - service: lock.lock
+              target:
+                entity_id: lock.door_c8ba
+      default:
+        - service: notify.mobile_app_pixel_9_pro_fold
+          data:
+            title: "Guest at Front Gate"
+            message: "{{ recognized_name }} was recognized — unlock the gate?"
+            data:
+              actions:
+                - action: "UNLOCK_GATE_GUEST"
+                  title: "Unlock"
+        - service: notify.mobile_app_pixel_fold
+          data:
+            title: "Guest at Front Gate"
+            message: "{{ recognized_name }} was recognized — unlock the gate?"
+            data:
+              actions:
+                - action: "UNLOCK_GATE_GUEST"
+                  title: "Unlock"
+        - service: notify.mobile_app_samsung
+          data:
+            title: "Guest at Front Gate"
+            message: "{{ recognized_name }} was recognized — unlock the gate?"
+            data:
+              actions:
+                - action: "UNLOCK_GATE_GUEST"
+                  title: "Unlock"
+  mode: single
 
-- id: 'example_motion_lights'
-  alias: 'Example: Motion Activated Lights'
-  description: 'Turn on lights when motion is detected'
+- id: 'face_guest_unlock_confirm'
+  alias: Face Guest Unlock Confirm
+  description: Unlocks front gate when user taps Unlock on a guest recognition notification
+  triggers:
+    - trigger: event
+      event_type: mobile_app_notification_action
+      event_data:
+        action: UNLOCK_GATE_GUEST
+  actions:
+    - service: select.select_option
+      target:
+        entity_id: select.front_gate_doorbell_play_quick_reply_message
+      data:
+        option: "welcome access grant"
+    - service: lock.unlock
+      target:
+        entity_id: lock.door_c8ba
+    - delay:
+        seconds: 10
+    - service: lock.lock
+      target:
+        entity_id: lock.door_c8ba
+  mode: single
+
+- id: 'front_gate_exit_button_notification'
+  alias: Front Gate Exit Button Notification
+  description: Notify all devices when exit button is pressed at front gate
+  triggers:
+    - trigger: state
+      entity_id: event.door_c8ba_door_event
+  conditions:
+    - condition: template
+      value_template: "{{ trigger.to_state.attributes.event_type == 'unifi_access_exit' }}"
+  actions:
+    - service: notify.mobile_app_pixel_9_pro_fold
+      data:
+        title: "Front Gate Opened"
+        message: "Exit button pressed at the front gate."
+    - service: notify.mobile_app_pixel_fold
+      data:
+        title: "Front Gate Opened"
+        message: "Exit button pressed at the front gate."
+    - service: notify.mobile_app_samsung
+      data:
+        title: "Front Gate Opened"
+        message: "Exit button pressed at the front gate."
+    - service: notify.mobile_app_pixel_watch_4
+      data:
+        title: "Front Gate Opened"
+        message: "Exit button pressed at the front gate."
+  mode: single
+
+- id: '1739823009501'
+  alias: TeslaUserGarageOpen
+  description: ''
+  triggers:
+  - device_id: 87ae4af24538f1aadc373056d0abbb8d
+    domain: lock
+    entity_id: eee4f13643167bc49706b1877e3556c6
+    type: open
+    trigger: device
+  conditions:
+  - condition: zone
+    entity_id: person.home
+    zone: zone.home
+  actions:
+  - device_id: 2bf38da62a980e17f0096efe27314644
+    domain: cover
+    entity_id: 351c43ad1b0df8d64158cfc5c78293ce
+    type: open
+  mode: single
+
+- id: 'tesla_starts_moving_alert'
+  alias: Tesla Starts Moving Alert
+  description: >-
+    Any Tesla gear change while user is NOT in the car triggers a notification,
+    regardless of where the user or Tesla is located.
+    If heading home, also sends an ETA follow-up.
+  triggers:
+    - trigger: state
+      entity_id: sensor.kai_s_tesla_shift_state
+      not_to:
+        - "unavailable"
+        - "unknown"
+  conditions:
+    - condition: state
+      entity_id: binary_sensor.kai_s_tesla_user_present
+      state: "off"
+  actions:
+    - variables:
+        gear: "{{ trigger.to_state.state }}"
+        dest_state: "{{ states('device_tracker.kai_s_tesla_destination_location_tracker') }}"
+        dest_name: >-
+          {% if dest_state == 'home' %}
+            Home
+          {% elif dest_state not in ['not_home', 'unavailable', 'unknown'] %}
+            {{ dest_state | title }}
+          {% else %}
+            {{ state_attr('device_tracker.kai_s_tesla_destination_location_tracker', 'friendly_name')
+               or state_attr('device_tracker.kai_s_tesla_destination_location_tracker', 'last_known_name')
+               or 'an unknown location' }}
+          {% endif %}
+        eta_mins: >-
+          {% set t = states('sensor.kai_s_tesla_arrival_time') %}
+          {% if t not in ['unavailable', 'unknown', 'none', ''] %}
+            {{ ((as_timestamp(t) - as_timestamp(now())) / 60) | round(0) | int }}
+          {% else %}
+            -1
+          {% endif %}
+        eta_str: >-
+          {% set t = states('sensor.kai_s_tesla_arrival_time') %}
+          {% if t not in ['unavailable', 'unknown', 'none', ''] %}
+            {{ as_timestamp(t) | timestamp_custom('%-I:%M %p') }}
+          {% else %}
+            unknown
+          {% endif %}
+    - variables:
+        moving_msg: >-
+          {% if gear == 'D' %}
+          Tesla shifted to Drive.
+          {% elif gear == 'R' %}
+          Tesla shifted to Reverse.
+          {% elif gear == 'P' %}
+          Tesla shifted to Park.
+          {% elif gear == 'N' %}
+          Tesla shifted to Neutral.
+          {% else %}
+          Tesla gear changed to {{ gear }}.
+          {% endif %}
+          {% if gear in ['D', 'R'] %}
+            {% if dest_state == 'home' %}
+          Heading HOME — ETA {{ eta_str }} (~{{ eta_mins }} min).
+            {% else %}
+          Destination: {{ dest_name }}.
+            {% endif %}
+          {% endif %}
+    - repeat:
+        count: 3
+        sequence:
+          - service: notify.mobile_app_pixel_9_pro_fold
+            data:
+              title: "Tesla is Moving!"
+              message: "{{ moving_msg }}"
+              data:
+                ttl: 0
+                priority: high
+                channel: alarm_stream
+                tag: tesla_moving
+          - delay:
+              milliseconds: 800
+    - condition: template
+      value_template: "{{ gear in ['D', 'R'] and dest_state == 'home' and eta_mins | int > 0 }}"
+    - repeat:
+        count: 3
+        sequence:
+          - service: notify.mobile_app_pixel_9_pro_fold
+            data:
+              title: "Tesla Heading Home"
+              message: >-
+                Tesla is on the way home!
+                Arriving at {{ eta_str }} (~{{ eta_mins }} min,
+                {{ states('sensor.kai_s_tesla_distance_to_arrival') | round(1) }} km away).
+              data:
+                ttl: 0
+                priority: high
+                channel: alarm_stream
+                tag: tesla_heading_home
+          - delay:
+              milliseconds: 800
+  mode: single
+
+- id: 'tesla_approaching_home_countdown'
+  alias: Tesla Approaching Home - Countdown Notifications
+  description: >-
+    Every minute during the last 5 minutes before Tesla arrives home,
+    send a countdown alert (stops when < 2 min remain or Tesla arrives).
+  triggers:
+    - trigger: time_pattern
+      minutes: "/1"
+  conditions:
+    - condition: state
+      entity_id: binary_sensor.kai_s_tesla_user_present
+      state: "off"
+    - condition: not
+      conditions:
+        - condition: state
+          entity_id: device_tracker.kai_s_tesla_location_tracker
+          state: "home"
+    - condition: state
+      entity_id: device_tracker.kai_s_tesla_destination_location_tracker
+      state: "home"
+    - condition: not
+      conditions:
+        - condition: state
+          entity_id: sensor.kai_s_tesla_arrival_time
+          state:
+            - "unavailable"
+            - "unknown"
+    - condition: template
+      value_template: >-
+        {% set eta_mins = ((as_timestamp(states('sensor.kai_s_tesla_arrival_time')) - as_timestamp(now())) / 60) | int %}
+        {{ eta_mins >= 2 and eta_mins <= 5 }}
+  actions:
+    - variables:
+        eta_mins: >-
+          {{ ((as_timestamp(states('sensor.kai_s_tesla_arrival_time')) - as_timestamp(now())) / 60) | int }}
+    - repeat:
+        count: 3
+        sequence:
+          - service: notify.mobile_app_pixel_9_pro_fold
+            data:
+              title: "Tesla Arriving Soon!"
+              message: "Tesla arrives home in {{ eta_mins }} minute{{ 's' if eta_mins != 1 else '' }}!"
+              data:
+                ttl: 0
+                priority: high
+                channel: alarm_stream
+                tag: tesla_arriving
+          - delay:
+              milliseconds: 800
+  mode: single
+
+- id: 'debug_frigate_mqtt'
+  alias: Debug Frigate MQTT
+  description: Temporary - capture all Frigate MQTT messages
+  triggers:
+    - trigger: mqtt
+      topic: "frigate/#"
+  conditions: []
+  actions:
+    - service: persistent_notification.create
+      data:
+        title: "Frigate MQTT"
+        message: "Topic: {{ trigger.topic }} | {{ trigger.payload | truncate(300) }}"
+        notification_id: "frigate_debug"
+  mode: queued
+  max: 10
+
+- id: cradlewise_after_sleep
+  alias: Cradlewise After Sleep
+  description: When baby falls asleep, reduce rock amplitude and lower music volume.
   trigger:
     - platform: state
-      entity_id: binary_sensor.living_room_motion
-      to: 'on'
-  condition:
-    - condition: state
-      entity_id: sun.sun
-      state: 'below_horizon'
+      entity_id: sensor.cradlewise_avo_sleep_phase
+      to: "sleep"
+  condition: []
   action:
-    - service: light.turn_on
+    - service: number.set_value
       target:
-        entity_id: light.living_room_main
+        entity_id: number.cradlewise_avo_rock_amplitude
       data:
-        brightness_pct: 75
-
-- id: 'example_schedule_lights'
-  alias: 'Example: Evening Light Schedule'
-  description: 'Turn on evening lights at sunset'
-  trigger:
-    - platform: sun
-      event: sunset
-      offset: "-00:30:00"
-  action:
-    - service: light.turn_on
+        value: 1
+    - service: number.set_value
       target:
-        area_id: living_room
+        entity_id: number.cradlewise_avo_music_volume
       data:
-        brightness_pct: 50
+        value: 30
+  mode: single
 
-- id: 'example_device_notification'
-  alias: 'Example: Low Battery Notification'
-  description: 'Notify when device battery is low'
+- id: watchdog_frigate_crib_camera
+  alias: "Watchdog: Restart Frigate if crib camera stalls"
+  description: >
+    Restarts Frigate when the crib camera FPS is 0. Triggers on frigate/stats MQTT,
+    then waits 10 min and confirms FPS is still 0 before restarting. No-op if stream
+    recovers within that window. Guard against go2rtc MJPEG→H264 timeout crash loops.
   trigger:
-    - platform: numeric_state
-      entity_id: sensor.phone_battery_level
-      below: 20
+    - platform: mqtt
+      topic: "frigate/stats"
   condition:
-    - condition: time
-      after: '09:00:00'
-      before: '22:00:00'
+    - condition: template
+      value_template: >
+        {% set payload = trigger.payload_json %}
+        {% set fps = (payload.cameras.crib.camera_fps
+                      if 'cameras' in payload
+                      else payload.crib.camera_fps) | float(0) %}
+        {{ fps < 0.05 }}
   action:
-    - service: notify.mobile_app
+    - delay: "00:10:00"
+    - wait_for_trigger:
+        - platform: mqtt
+          topic: "frigate/stats"
+      timeout: "00:05:00"
+      continue_on_timeout: false
+    - condition: template
+      value_template: >
+        {% set payload = wait.trigger.payload_json %}
+        {% set fps = (payload.cameras.crib.camera_fps
+                      if 'cameras' in payload
+                      else payload.crib.camera_fps) | float(0) %}
+        {{ fps < 0.05 }}
+    - service: hassio.addon_restart
       data:
-        title: "Low Battery Alert"
-        message: "Your phone battery is at {{ states('sensor.phone_battery_level') }}%"
+        addon: ccab4aaf_frigate-fa
+    - service: persistent_notification.create
+      data:
+        title: "Crib Camera Watchdog Triggered"
+        message: >
+          Restarted Frigate at {{ now().strftime('%Y-%m-%d %H:%M') }} —
+          crib camera FPS was 0 for 10+ minutes.
+  mode: single

@@ -1,46 +1,113 @@
-# Example Home Assistant Scenes
-# These capture the state of multiple entities for quick activation
-
-- name: "Movie Night"
+- id: '1739758036459'
+  name: RATGDO
   entities:
-    light.living_room_main:
-      state: on
-      brightness: 10
-      color_temp: 454
-    light.living_room_accent:
-      state: off
-    media_player.living_room_tv:
-      state: on
-      source: "Netflix"
-
-- name: "Dinner Time"
-  entities:
-    light.dining_room_chandelier:
-      state: on
-      brightness: 180
-      color_temp: 350
-    light.kitchen_under_cabinet:
-      state: on
-      brightness: 255
-
-- name: "Work From Home"
-  entities:
-    light.office_desk:
-      state: on
-      brightness: 255
-      color_temp: 250
-    climate.office:
-      state: heat_cool
-      temperature: 72
-    switch.office_fan:
-      state: on
-
-- name: "Away Mode"
-  entities:
-    light.front_porch:
-      state: on
-      brightness: 128
-    climate.main_thermostat:
-      state: away
-    alarm_control_panel.home_security:
-      state: armed_away
+    binary_sensor.ratgdov25i_28319b_button:
+      friendly_name: ratgdov2.5i 28319b Button
+      state: unavailable
+    number.ratgdov25i_28319b_client_id:
+      min: 1337
+      max: 8385849
+      step: 4096
+      mode: box
+      friendly_name: ratgdov2.5i 28319b Client ID
+      state: unavailable
+    number.ratgdov25i_28319b_closing_duration:
+      min: 0
+      max: 180
+      step: 0.1
+      mode: auto
+      unit_of_measurement: s
+      friendly_name: ratgdov2.5i 28319b Closing duration
+      state: unavailable
+    cover.ratgdov25i_28319b_door:
+      device_class: garage
+      friendly_name: ratgdov2.5i 28319b Door
+      supported_features: 15
+      state: unavailable
+    binary_sensor.ratgdov25i_28319b_dry_contact_close:
+      friendly_name: ratgdov2.5i 28319b Dry contact close
+      state: unavailable
+    binary_sensor.ratgdov25i_28319b_dry_contact_light:
+      friendly_name: ratgdov2.5i 28319b Dry contact light
+      state: unavailable
+    binary_sensor.ratgdov25i_28319b_dry_contact_open:
+      friendly_name: ratgdov2.5i 28319b Dry contact open
+      state: unavailable
+    sensor.ratgdov25i_28319b_firmware_version:
+      icon: mdi:new-box
+      friendly_name: ratgdov2.5i 28319b Firmware Version
+      state: unavailable
+    switch.ratgdov25i_28319b_learn:
+      icon: mdi:plus-box
+      friendly_name: ratgdov2.5i 28319b Learn
+      state: unavailable
+    light.ratgdov25i_28319b_light:
+      supported_color_modes:
+      - onoff
+      friendly_name: ratgdov2.5i 28319b Light
+      supported_features: 8
+      state: unavailable
+    lock.ratgdov25i_28319b_lock_remotes:
+      friendly_name: ratgdov2.5i 28319b Lock remotes
+      supported_features: 0
+      state: unavailable
+    binary_sensor.ratgdov25i_28319b_motion:
+      device_class: motion
+      friendly_name: ratgdov2.5i 28319b Motion
+      state: unavailable
+    binary_sensor.ratgdov25i_28319b_motor:
+      device_class: running
+      friendly_name: ratgdov2.5i 28319b Motor
+      state: unavailable
+    binary_sensor.ratgdov25i_28319b_obstruction:
+      device_class: problem
+      friendly_name: ratgdov2.5i 28319b Obstruction
+      state: unavailable
+    number.ratgdov25i_28319b_opening_duration:
+      min: 0
+      max: 180
+      step: 0.1
+      mode: auto
+      unit_of_measurement: s
+      friendly_name: ratgdov2.5i 28319b Opening duration
+      state: unavailable
+    sensor.ratgdov25i_28319b_openings:
+      unit_of_measurement: openings
+      icon: mdi:open-in-app
+      friendly_name: ratgdov2.5i 28319b Openings
+      state: unavailable
+    sensor.ratgdov25i_28319b_paired_devices:
+      icon: mdi:remote
+      friendly_name: ratgdov2.5i 28319b Paired Devices
+      state: unavailable
+    button.ratgdov25i_28319b_query_openings:
+      friendly_name: ratgdov2.5i 28319b Query openings
+      state: unavailable
+    button.ratgdov25i_28319b_query_status:
+      friendly_name: ratgdov2.5i 28319b Query status
+      state: unavailable
+    button.ratgdov25i_28319b_restart:
+      device_class: restart
+      icon: mdi:restart
+      friendly_name: ratgdov2.5i 28319b Restart
+      state: unavailable
+    number.ratgdov25i_28319b_rolling_code_counter:
+      min: 0
+      max: 268435500
+      step: 1
+      mode: box
+      unit_of_measurement: codes
+      friendly_name: ratgdov2.5i 28319b Rolling code counter
+      state: unavailable
+    button.ratgdov25i_28319b_safe_mode_boot:
+      device_class: restart
+      icon: mdi:restart-alert
+      friendly_name: ratgdov2.5i 28319b Safe mode boot
+      state: unavailable
+    button.ratgdov25i_28319b_sync:
+      friendly_name: ratgdov2.5i 28319b Sync
+      state: unavailable
+    button.ratgdov25i_28319b_toggle_door:
+      friendly_name: ratgdov2.5i 28319b Toggle door
+      state: unavailable
+  metadata: {}

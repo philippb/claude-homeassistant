@@ -1,62 +1,316 @@
-# Example Home Assistant Configuration File
-# This is a minimal example configuration for demonstration purposes
-
-# Basic Home Assistant configuration
-homeassistant:
-  name: Home
-  latitude: 37.7749
-  longitude: -122.4194
-  elevation: 0
-  unit_system: metric
-  currency: USD
-  country: US
-  time_zone: America/Los_Angeles
-
-# Load frontend
-frontend:
-
-# Enable configuration panel
-config:
-
-# Enable the map panel
-map:
-
-# Enable mobile app integration
-mobile_app:
-
-# Enable history and logbook
-history:
-logbook:
-
-# Enable system health
-system_health:
-
-# Include automations and scripts
 automation: !include automations.yaml
 script: !include scripts.yaml
-scene: !include scenes.yaml
 
-# Example integrations
-weather:
-  - platform: met
-    name: Local Weather
+history:
+recorder:
+  purge_keep_days: 365
 
-# Example groups
-group:
-  living_room:
-    name: "Living Room"
-    entities:
-      - light.living_room_main
-      - switch.living_room_fan
+template:
+  - sensor:
+      - name: Grid Import Power
+        unique_id: grid_import_power
+        state_class: measurement
+        icon: mdi:transmission-tower
+        unit_of_measurement: W
+        device_class: power
+        state: >
+          {{ [0, states('sensor.envoy_202301146448_current_net_power_consumption') | float(0) * 1000] | max | round(0) }}
+      - name: Grid Export Power
+        unique_id: grid_export_power
+        state_class: measurement
+        icon: mdi:transmission-tower
+        unit_of_measurement: W
+        device_class: power
+        state: >
+          {{ [0, -(states('sensor.envoy_202301146448_current_net_power_consumption') | float(0) * 1000)] | max | round(0) }}
+      - name: Net Grid Watts
+        unique_id: net_grid_watts
+        state_class: measurement
+        icon: mdi:transmission-tower
+        unit_of_measurement: W
+        device_class: power
+        state: >
+          {{ (states('sensor.envoy_202301146448_current_net_power_consumption') | float(0) * 1000) | round(0) }}
 
-# Example sensors
+  - sensor:
+        name: Battery Power
+        unique_id: battery_power
+        state_class: measurement
+        icon: mdi:battery-charging
+        unit_of_measurement: W
+        device_class: power
+        state: >
+            {{ states('sensor.encharge_122221070487_power') | float(0)
+               + states('sensor.encharge_122221070488_power') | float(0)
+               + states('sensor.encharge_122221070500_power') | float(0) | round(0) }}
+  - sensor:
+        name: AC Energy Today
+        unique_id: ac_energy_today
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total
+        icon: mdi:air-conditioner
+        state: >
+          {{ [0,
+              states('sensor.envoy_202301146448_energy_consumption_today') | float(0) -
+              states('sensor.2034_totalusage_1d') | float(0) -
+              states('sensor.garage_totalusage_1d') | float(0)
+          ] | max | round(3) }}
+  - sensor:
+        name: Garage Other Energy Today
+        unique_id: garage_other_energy_today
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total
+        icon: mdi:garage
+        state: >
+          {{ [0,
+              states('sensor.garage_totalusage_1d') | float(0) -
+              states('sensor.tesla_wall_charger_2_1d') | float(0) -
+              states('sensor.cp_home_138865_cph50_energy_output') | float(0)
+          ] | max | round(3) }}
+  - sensor:
+        name: AC Power
+        unique_id: ac_power
+        state_class: measurement
+        icon: mdi:air-conditioner
+        unit_of_measurement: W
+        device_class: power
+        state: >
+          {{ [0,
+              (states('sensor.envoy_202301146448_current_power_consumption') | float(0) * 1000) | int -
+              states('sensor.2034_totalusage_1min') | int(0) -
+              states('sensor.garage_123_1min') | int(0)
+          ] | max }}
+
+  - sensor:
+        name: TWC Power
+        state_class: measurement
+        icon: mdi:ev-plug-tesla
+        unit_of_measurement: W
+        device_class: power
+        state: >
+            {{ (states('sensor.tesla_wall_connector_phase_a_current') | float(0) * states('sensor.tesla_wall_connector_phase_a_voltage') | float(0)
+               + states('sensor.tesla_wall_connector_phase_b_current') | float(0) * states('sensor.tesla_wall_connector_phase_b_voltage') | float(0)) | round(0) }}
+
+  - sensor:
+        name: Solar Production Watts
+        unique_id: solar_production_watts
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        icon: mdi:solar-power
+        state: >
+            {{ [0, (states('sensor.envoy_202301146448_current_power_productions') | float(0) * 1000)
+                - states('sensor.battery_discharging_power') | float(0)] | max | round(0) }}
+
+  - sensor:
+        name: Home Consumption Watts
+        unique_id: home_consumption_watts
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        icon: mdi:home-lightning-bolt
+        state: >
+            {{ [0,
+                (states('sensor.envoy_202301146448_current_power_productions') | float(0) * 1000)
+                + states('sensor.grid_import_power') | float(0)
+                - states('sensor.grid_export_power') | float(0)
+                - states('sensor.battery_charging_power') | float(0)
+                + states('sensor.battery_discharging_power') | float(0)
+            ] | max | round(0) }}
+
+  - sensor:
+        name: Battery Charging Power
+        unique_id: battery_charging_power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        icon: mdi:battery-arrow-up
+        state: >
+            {{ [0, -(states('sensor.battery_power') | float(0))] | max | round(0) }}
+
+  - sensor:
+        name: Battery Discharging Power
+        unique_id: battery_discharging_power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        icon: mdi:battery-arrow-down
+        state: >
+            {{ [0, states('sensor.battery_power') | float(0)] | max | round(0) }}
+
+  - sensor:
+        name: Solar To House
+        unique_id: solar_to_house
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        icon: mdi:solar-power
+        state: >
+            {{ [0,
+                states('sensor.home_consumption_watts') | float(0)
+                - states('sensor.grid_import_power') | float(0)
+                - states('sensor.battery_discharging_power') | float(0)
+            ] | max | round(0) }}
+
+  - sensor:
+        name: Solar To Grid
+        unique_id: solar_to_grid
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        icon: mdi:solar-power
+        state: >
+            {{ [0, states('sensor.solar_production_watts') | float(0)
+                - states('sensor.solar_to_house') | float(0)
+                - states('sensor.battery_charging_power') | float(0)] | max | round(0) }}
+
+  - sensor:
+        name: Tesla Range Miles
+        unique_id: tesla_range_miles
+        unit_of_measurement: mi
+        icon: mdi:car-electric
+        state: >
+            {{ (states('sensor.kai_s_tesla_range') | float(0) * 0.621371) | round(1) }}
+
+  - sensor:
+        name: Tesla Charging Rate MPH
+        unique_id: tesla_charging_rate_mph
+        unit_of_measurement: mph
+        state_class: measurement
+        icon: mdi:speedometer
+        state: >
+            {{ (states('sensor.kai_s_tesla_charging_rate') | float(0) * 0.621371) | round(1) }}
+
+  - sensor:
+        name: Volvo EX90 Range Miles
+        unique_id: volvo_ex90_range_miles
+        unit_of_measurement: mi
+        icon: mdi:car-electric
+        state: >
+            {{ (states('sensor.volvo_ex90_distance_to_empty_battery') | float(0) * 0.621371) | round(1) }}
+
+  - sensor:
+        name: Tesla ChargePoint Session Cost
+        icon: mdi:currency-usd
+        unit_of_measurement: USD
+        state_class: measurement
+        state: >
+            {% set hour = now().hour %}
+            {% set peak = (hour >= 16 and hour < 21) %}
+            {% set rate = 0.4834 if peak else 0.4275 %}
+            {{ (states('sensor.kai_s_tesla_energy_added') | float(0) * rate) | round(2) }}
+        attributes:
+          rate_type: >
+            {% set hour = now().hour %}
+            {{ 'peak' if (hour >= 16 and hour < 21) else 'off-peak' }}
+          rate_per_kwh: >
+            {% set hour = now().hour %}
+            {{ 0.4834 if (hour >= 16 and hour < 21) else 0.4275 }}
+
+  - sensor:
+      - name: Water Total Today
+        unique_id: water_total_today
+        unit_of_measurement: gal
+        state_class: total_increasing
+        icon: mdi:water
+        state: >
+          {{ (states('sensor.flume_sensor_san_jose_current_day') | float(0) * 0.264172) | round(1) }}
+
+      - name: Water Indoor Today
+        unique_id: water_indoor_today
+        unit_of_measurement: gal
+        state_class: total_increasing
+        icon: mdi:home-flood
+        state: >
+          {{ (states('sensor.flo_today_s_water_usage') | float(0) * 0.264172) | round(1) }}
+
+      - name: Water Irrigation Today
+        unique_id: water_irrigation_today
+        unit_of_measurement: gal
+        state_class: total_increasing
+        icon: mdi:sprinkler
+        state: >
+          {{ [0,
+              (states('sensor.flume_sensor_san_jose_current_day') | float(0)
+               - states('sensor.flo_today_s_water_usage') | float(0)) * 0.264172
+          ] | max | round(1) }}
+
+      - name: Water Total This Month
+        unique_id: water_total_month
+        unit_of_measurement: gal
+        state_class: total_increasing
+        icon: mdi:water
+        state: >
+          {{ (states('sensor.flume_sensor_san_jose_current_month') | float(0) * 0.264172) | round(0) }}
+
+      - name: Water Total This Month CCF
+        unique_id: water_total_month_ccf
+        unit_of_measurement: CCF
+        icon: mdi:water
+        state: >
+          {{ (states('sensor.flume_sensor_san_jose_current_month') | float(0) * 0.264172 / 748) | round(2) }}
+
+      - name: Water Monthly Cost Estimate
+        unique_id: water_monthly_cost_est
+        unit_of_measurement: USD
+        icon: mdi:currency-usd
+        state: >
+          {% set total_ccf = states('sensor.flume_sensor_san_jose_current_month') | float(0) * 0.264172 / 748 %}
+          {% set tier1_limit = 6.207 %}
+          {% set tier1 = [total_ccf, tier1_limit] | min %}
+          {% set tier2 = [0, total_ccf - tier1_limit] | max %}
+          {{ ((tier1 * 4.7924 + tier2 * 7.1528) * 1.057) | round(2) }}
+
 sensor:
-  - platform: time_date
-    display_options:
-      - 'time'
-      - 'date'
+  - platform: integration
+    name: Grid Import Energy
+    source: sensor.grid_import_power
+    unit_prefix: k
+    unit_time: h
+    method: left
 
-# Example binary sensors
-binary_sensor:
-  - platform: workday
-    country: US
+  - platform: integration
+    name: Grid Export Energy
+    source: sensor.grid_export_power
+    unit_prefix: k
+    unit_time: h
+    method: left
+
+lovelace:
+  dashboards:
+    lovelace-energy:
+      mode: yaml
+      title: Energy Monitor
+      icon: mdi:lightning-bolt
+      show_in_sidebar: true
+      filename: lovelace_energy.yaml
+    lovelace-water:
+      mode: yaml
+      title: Water Monitor
+      icon: mdi:water
+      show_in_sidebar: true
+      filename: lovelace_water.yaml
+
+my:
+
+logbook:
+
+mqtt:
+  sensor:
+    - name: "Frigate Crib Camera FPS"
+      unique_id: "frigate_crib_camera_fps"
+      state_topic: "frigate/stats"
+      value_template: >
+        {{ (value_json.cameras.crib.camera_fps
+            if 'cameras' in value_json
+            else value_json.crib.camera_fps) | float(0) }}
+      unit_of_measurement: "fps"
+      expire_after: 300
+      icon: mdi:camera
+
+logger:
+  default: warning
+  logs:
+    custom_components.cradlewise: debug
