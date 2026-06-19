@@ -554,6 +554,197 @@
         value: 30
   mode: single
 
+- id: cradlewise_nap_timelapse
+  alias: "Cradlewise: Export nap timelapse after nap ends"
+  description: >
+    When a nap ends, exports a timelapse video from Frigate covering the nap.
+    Requires nap duration ≥5 min. Sends push notification with a link to the export.
+  trigger:
+    - platform: state
+      entity_id: sensor.cradlewise_avo_last_nap_ended
+  condition:
+    - condition: template
+      value_template: >
+        {% set nap_start = states('sensor.cradlewise_avo_last_nap_started') %}
+        {% set nap_end = states('sensor.cradlewise_avo_last_nap_ended') %}
+        {% if nap_start not in ['unknown', 'unavailable', 'none', '']
+           and nap_end not in ['unknown', 'unavailable', 'none', ''] %}
+          {% set dur_min = ((as_timestamp(nap_end) - as_timestamp(nap_start)) / 60) | int %}
+          {{ dur_min >= 5 }}
+        {% else %}
+          false
+        {% endif %}
+  action:
+    - variables:
+        nap_start_ts: >
+          {{ as_timestamp(states('sensor.cradlewise_avo_last_nap_started')) | int }}
+        nap_end_ts: >
+          {{ as_timestamp(states('sensor.cradlewise_avo_last_nap_ended')) | int }}
+        nap_mins: >
+          {{ ((as_timestamp(states('sensor.cradlewise_avo_last_nap_ended'))
+               - as_timestamp(states('sensor.cradlewise_avo_last_nap_started'))) / 60) | round(0) | int }}
+    - service: rest_command.frigate_export_nap
+      data:
+        start_time: "{{ nap_start_ts }}"
+        end_time: "{{ nap_end_ts }}"
+    - service: input_text.set_value
+      target:
+        entity_id: input_text.cradlewise_last_timelapse
+      data:
+        value: "{{ nap_mins }}-min nap ({{ states('sensor.cradlewise_avo_last_nap_ended') }}) - exporting"
+    - service: notify.mobile_app_kais_iphone
+      data:
+        title: "Nap Timelapse Ready"
+        message: >
+          {{ nap_mins }}-min nap exported. Tap to view in Frigate.
+        data:
+          url: "/ccab4aaf_frigate-fa/#/export"
+          push:
+            sound:
+              name: default
+    - service: notify.mobile_app_kais_iphone_2
+      data:
+        title: "Nap Timelapse Ready"
+        message: >
+          {{ nap_mins }}-min nap exported. Tap to view in Frigate.
+        data:
+          url: "/ccab4aaf_frigate-fa/#/export"
+    - service: notify.mobile_app_iphone
+      data:
+        title: "Nap Timelapse Ready"
+        message: >
+          {{ nap_mins }}-min nap exported. Tap to view in Frigate.
+        data:
+          url: "/ccab4aaf_frigate-fa/#/export"
+  mode: single
+
+- id: cradlewise_daily_summary
+  alias: "Cradlewise: Daily sleep summary at 8pm"
+  description: >
+    Sends a push notification at 8pm summarizing the day's nap stats.
+    Only fires if at least one nap occurred today.
+  trigger:
+    - platform: time
+      at: "20:00:00"
+  condition:
+    - condition: numeric_state
+      entity_id: sensor.cradlewise_avo_nap_count_today
+      above: 0
+  action:
+    - variables:
+        nap_count: "{{ states('sensor.cradlewise_avo_nap_count_today') | int }}"
+        total_sleep_h: >
+          {{ (states('sensor.cradlewise_avo_total_sleep_today') | float(0) / 60) | round(1) }}
+        longest_nap: >
+          {{ states('sensor.cradlewise_avo_longest_nap_today') | int(0) }}
+        efficiency: "{{ states('sensor.baby_sleep_efficiency') | float(0) | round(0) }}"
+        nap_label: "{{ 'nap' if nap_count == 1 else 'naps' }}"
+    - service: notify.mobile_app_kais_iphone
+      data:
+        title: "Avo's Sleep Summary"
+        message: >
+          {{ nap_count }} {{ nap_label }} · {{ total_sleep_h }}h total sleep · longest {{ longest_nap }} min · {{ efficiency }}% efficient
+        data:
+          url: "/lovelace/cradlewise-naps-care"
+          push:
+            sound:
+              name: default
+    - service: notify.mobile_app_kais_iphone_2
+      data:
+        title: "Avo's Sleep Summary"
+        message: >
+          {{ nap_count }} {{ nap_label }} · {{ total_sleep_h }}h total sleep · longest {{ longest_nap }} min · {{ efficiency }}% efficient
+        data:
+          url: "/lovelace/cradlewise-naps-care"
+    - service: notify.mobile_app_iphone
+      data:
+        title: "Avo's Sleep Summary"
+        message: >
+          {{ nap_count }} {{ nap_label }} · {{ total_sleep_h }}h total sleep · longest {{ longest_nap }} min · {{ efficiency }}% efficient
+        data:
+          url: "/lovelace/cradlewise-naps-care"
+  mode: single
+
+- id: cradlewise_auto_soothe
+  alias: "Cradlewise: Auto-soothe when baby needs attention"
+  description: >
+    If baby_needs_attention stays on for 2 minutes and the crib isn't already rocking,
+    starts rocking automatically. Waits 5 more minutes; if the baby has settled,
+    turns rocking back off.
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.cradlewise_avo_baby_needs_attention
+      to: "on"
+      for: "00:02:00"
+  condition:
+    - condition: state
+      entity_id: binary_sensor.cradlewise_avo_baby_present
+      state: "on"
+    - condition: state
+      entity_id: switch.cradlewise_avo_rocking
+      state: "off"
+  action:
+    - service: switch.turn_on
+      target:
+        entity_id: switch.cradlewise_avo_rocking
+    - delay: "00:05:00"
+    - condition: state
+      entity_id: binary_sensor.cradlewise_avo_baby_needs_attention
+      state: "off"
+    - service: switch.turn_off
+      target:
+        entity_id: switch.cradlewise_avo_rocking
+  mode: single
+
+- id: cradlewise_cry_alert
+  alias: "Cradlewise: Notify when baby is crying"
+  description: >
+    Fires a push notification the moment cry detection transitions to on,
+    and a clear notification when the baby settles.
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.cradlewise_avo_baby_crying
+  condition: []
+  action:
+    - choose:
+        - conditions:
+            - condition: state
+              entity_id: binary_sensor.cradlewise_avo_baby_crying
+              state: "on"
+          sequence:
+            - service: notify.mobile_app_kais_iphone
+              data:
+                title: "Baby Crying"
+                message: "Avo is crying — check the crib camera."
+                data:
+                  tag: cradlewise_cry
+                  url: /lovelace/cradlewise
+            - service: notify.mobile_app_iphone
+              data:
+                title: "Baby Crying"
+                message: "Avo is crying — check the crib camera."
+                data:
+                  tag: cradlewise_cry
+                  url: /lovelace/cradlewise
+        - conditions:
+            - condition: state
+              entity_id: binary_sensor.cradlewise_avo_baby_crying
+              state: "off"
+          sequence:
+            - service: notify.mobile_app_kais_iphone
+              data:
+                title: "Baby Settled"
+                message: "Avo has stopped crying."
+                data:
+                  tag: cradlewise_cry
+            - service: notify.mobile_app_iphone
+              data:
+                title: "Baby Settled"
+                message: "Avo has stopped crying."
+                data:
+                  tag: cradlewise_cry
+  mode: single
+
 - id: watchdog_frigate_crib_camera
   alias: "Watchdog: Restart Frigate if crib camera stalls"
   description: >

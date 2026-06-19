@@ -204,6 +204,17 @@ views:
       - type: custom:cradlewise-sleep-card
         name: Avo
 
+      - type: entities
+        title: Nap Timelapse
+        icon: mdi:video-box
+        entities:
+          - entity: input_text.cradlewise_last_timelapse
+            name: Last Export
+          - type: weblink
+            name: Open Frigate Exports
+            url: "/ccab4aaf_frigate-fa/#/export"
+            icon: mdi:open-in-new
+
   - title: Lullabies
     path: lullabies
     icon: mdi:music-note

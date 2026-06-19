@@ -9,8 +9,15 @@ home-assistant_v2.db*
 *.db-wal
 *.log*
 
-# Custom add-ons and themes (managed separately)
-custom_components/
+# custom_components: allow cradlewise through, protect everything else.
+# The parent directory must be explicitly included so rsync descends into it.
+# `+` rules win by first-match, so cradlewise syncs while the trailing `**`
+# exclude shields all other components (sibling dirs AND loose files) from
+# --delete — preserving HACS/other integrations on the remote.
++ custom_components/
++ custom_components/cradlewise/
++ custom_components/cradlewise/**
+- custom_components/**
 custom_icons/
 themes/
 

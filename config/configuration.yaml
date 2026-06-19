@@ -409,6 +409,19 @@ counter:
     step: 1
     minimum: 0
 
+rest_command:
+  frigate_export_nap:
+    url: "http://ccab4aaf-frigate-fa:5000/api/export/crib/{{ start_time }}/{{ end_time }}"
+    method: POST
+    content_type: "application/json"
+    payload: '{"playback": "fastforward"}'
+
+input_text:
+  cradlewise_last_timelapse:
+    name: "Last Nap Timelapse"
+    icon: mdi:video-box
+    max: 255
+
 logger:
   default: warning
   logs:
