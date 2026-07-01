@@ -1,0 +1,102 @@
+# ecobee thermostat + SmartSensors (paired via HomeKit). Auto-generated 2026-07-01.
+title: Climate
+views:
+- title: Climate
+  path: climate
+  icon: mdi:thermometer
+  cards:
+  - type: thermostat
+    entity: climate.my_ecobee
+  - type: entities
+    title: Thermostat
+    show_header_toggle: false
+    entities:
+    - entity: sensor.my_ecobee_current_temperature
+      name: Temperature
+    - entity: sensor.my_ecobee_current_humidity
+      name: Humidity
+    - entity: binary_sensor.my_ecobee_occupancy
+      name: Occupancy
+    - entity: select.my_ecobee_current_mode
+      name: Comfort Mode
+  - type: glance
+    title: Room Temperatures
+    columns: 3
+    show_state: true
+    entities:
+    - entity: sensor.bedroom_temperature
+      name: Bedroom
+    - entity: sensor.gym_temperature
+      name: GYM
+    - entity: sensor.kitchen_temperature
+      name: Kitchen
+    - entity: sensor.ms_bedroom_temperature
+      name: MS Bedroom
+    - entity: sensor.ms_bath_temperature
+      name: MS bath
+    - entity: sensor.office_temperature
+      name: Office
+    - entity: sensor.server_room_temperature
+      name: Server Room
+    - entity: sensor.guest_bathroom_temperature
+      name: guest bathroom
+  - type: glance
+    title: Room Occupancy
+    columns: 3
+    entities:
+    - entity: binary_sensor.bedroom_occupancy
+      name: Bedroom
+    - entity: binary_sensor.gym_occupancy
+      name: GYM
+    - entity: binary_sensor.kitchen_occupancy
+      name: Kitchen
+    - entity: binary_sensor.ms_bedroom_occupancy
+      name: MS Bedroom
+    - entity: binary_sensor.ms_bath_occupancy
+      name: MS bath
+    - entity: binary_sensor.office_occupancy
+      name: Office
+    - entity: binary_sensor.server_room_occupancy
+      name: Server Room
+    - entity: binary_sensor.guest_bathroom_occupancy
+      name: guest bathroom
+  - type: entities
+    title: Doors & Windows
+    show_header_toggle: false
+    entities:
+    - entity: binary_sensor.front_door_contact
+      name: Front door
+    - entity: binary_sensor.ms_patio_contact
+      name: MS Patio
+    - entity: binary_sensor.patio_door_contact
+      name: Patio Door
+    - entity: binary_sensor.kitchen_door_contact
+      name: kitchen door
+  - type: entities
+    title: Sensor Batteries
+    show_header_toggle: false
+    entities:
+    - entity: sensor.bedroom_battery
+      name: Bedroom
+    - entity: sensor.front_door_battery
+      name: Front door
+    - entity: sensor.gym_battery
+      name: GYM
+    - entity: sensor.kitchen_battery
+      name: Kitchen
+    - entity: sensor.ms_bedroom_battery
+      name: MS Bedroom
+    - entity: sensor.ms_patio_battery
+      name: MS Patio
+    - entity: sensor.ms_bath_battery
+      name: MS bath
+    - entity: sensor.office_battery
+      name: Office
+    - entity: sensor.patio_door_battery
+      name: Patio Door
+    - entity: sensor.server_room_battery
+      name: Server Room
+    - entity: sensor.guest_bathroom_battery
+      name: guest bathroom
+    - entity: sensor.kitchen_door_battery
+      name: kitchen door

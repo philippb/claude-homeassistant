@@ -349,6 +349,12 @@ lovelace:
       icon: mdi:baby-carriage
       show_in_sidebar: true
       filename: lovelace_cradlewise.yaml
+    lovelace-climate:
+      mode: yaml
+      title: Climate
+      icon: mdi:thermometer
+      show_in_sidebar: true
+      filename: lovelace_climate.yaml
 
 my:
 
