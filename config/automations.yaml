@@ -786,6 +786,157 @@
           Restarted Frigate at {{ now().strftime('%Y-%m-%d %H:%M') }} —
           crib camera FPS was 0 for 10+ minutes.
   mode: single
+- id: doorbell_front_gate_to_hallway_tv
+  alias: Front Gate Doorbell to Hallway TV
+  description: >
+    When someone rings the front gate doorbell, cast its camera feed to the
+    hallway TV for 60 seconds, then stop the cast.
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.front_gate_doorbell_visitor
+      from: 'off'
+      to: 'on'
+  conditions: []
+  actions:
+    # Disable Art Mode so it can't relaunch over the cast. While the Reolink
+    # stream buffers (~10s+) Art Mode keeps reclaiming the foreground; disabling
+    # it removes the race entirely. force-stop clears the running instance.
+    - action: androidtv.adb_command
+      target:
+        entity_id: media_player.android_tv_192_168_14_205
+      data:
+        command: pm disable-user --user 0 com.vt.arttv.artmode
+    - delay: '00:00:02'
+    - action: camera.play_stream
+      target:
+        entity_id: camera.front_gate_doorbell_fluent
+      data:
+        media_player: media_player.hallway_tv
+        format: hls
+    - delay: '00:01:00'
+    # Restore Art Mode: re-enable the package, then relaunch it.
+    # (adb_command runs one command per call — no ';' chaining.)
+    - action: androidtv.adb_command
+      target:
+        entity_id: media_player.android_tv_192_168_14_205
+      data:
+        command: pm enable com.vt.arttv.artmode
+    - delay: '00:00:02'
+    - action: androidtv.adb_command
+      target:
+        entity_id: media_player.android_tv_192_168_14_205
+      data:
+        command: >-
+          am start -n com.vt.arttv.artmode/.ArtModeActivity
+          -a com.vt.arttv.artmode.action_main_activity
+  mode: restart
+- id: doorbell_front_door_to_hallway_tv
+  alias: Front Door Doorbell to Hallway TV
+  description: >
+    When someone rings the front door doorbell, cast its camera feed to the
+    hallway TV for 60 seconds, then stop the cast.
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.doorbell_visitor
+      from: 'off'
+      to: 'on'
+  conditions: []
+  actions:
+    # Disable Art Mode so it can't relaunch over the cast. While the Reolink
+    # stream buffers (~10s+) Art Mode keeps reclaiming the foreground; disabling
+    # it removes the race entirely. force-stop clears the running instance.
+    - action: androidtv.adb_command
+      target:
+        entity_id: media_player.android_tv_192_168_14_205
+      data:
+        command: pm disable-user --user 0 com.vt.arttv.artmode
+    - delay: '00:00:02'
+    - action: camera.play_stream
+      target:
+        entity_id: camera.doorbell_fluent
+      data:
+        media_player: media_player.hallway_tv
+        format: hls
+    - delay: '00:01:00'
+    # Restore Art Mode: re-enable the package, then relaunch it.
+    # (adb_command runs one command per call — no ';' chaining.)
+    - action: androidtv.adb_command
+      target:
+        entity_id: media_player.android_tv_192_168_14_205
+      data:
+        command: pm enable com.vt.arttv.artmode
+    - delay: '00:00:02'
+    - action: androidtv.adb_command
+      target:
+        entity_id: media_player.android_tv_192_168_14_205
+      data:
+        command: >-
+          am start -n com.vt.arttv.artmode/.ArtModeActivity
+          -a com.vt.arttv.artmode.action_main_activity
+  mode: restart
+- id: watchdog_cradlewise_crib_stream
+  alias: "Watchdog: Recover crib stream if Cradlewise drops"
+  description: >
+    The crib feed (Cradlewise -> go2rtc -> TV camera wall / Frigate) depends on
+    the Cradlewise integration. If the device goes offline or the crib camera
+    entity becomes unavailable for 5 minutes, reload the integration to
+    reconnect, then re-check and alert if it didn't recover. Re-attempts every
+    30 minutes while still down. (The go2rtc/Frigate side is covered by the
+    separate Frigate-FPS watchdog.)
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.cradlewise_avo_online
+      to: "off"
+      for: "00:05:00"
+    - trigger: state
+      entity_id: camera.cradlewise_avo_crib_camera
+      to: "unavailable"
+      for: "00:05:00"
+    - trigger: time_pattern
+      minutes: "/30"
+  conditions:
+    - condition: or
+      conditions:
+        - condition: state
+          entity_id: binary_sensor.cradlewise_avo_online
+          state: "off"
+        - condition: state
+          entity_id: camera.cradlewise_avo_crib_camera
+          state: "unavailable"
+  actions:
+    - action: homeassistant.reload_config_entry
+      target:
+        entity_id: camera.cradlewise_avo_crib_camera
+    - delay: "00:01:30"
+    - choose:
+        - conditions:
+            - condition: or
+              conditions:
+                - condition: state
+                  entity_id: binary_sensor.cradlewise_avo_online
+                  state: "off"
+                - condition: state
+                  entity_id: camera.cradlewise_avo_crib_camera
+                  state: "unavailable"
+          sequence:
+            - action: notify.mobile_app_kais_iphone
+              data:
+                title: "⚠️ Crib stream down"
+                message: >
+                  Cradlewise crib stream is still down after a reload at
+                  {{ now().strftime('%H:%M') }}. Check the crib power / Wi-Fi.
+            - action: persistent_notification.create
+              data:
+                notification_id: crib_stream_watchdog
+                title: "Crib Stream Watchdog"
+                message: >
+                  Crib stream unavailable; reloaded Cradlewise at
+                  {{ now().strftime('%Y-%m-%d %H:%M') }} but it has not recovered.
+      default:
+        - action: persistent_notification.dismiss
+          data:
+            notification_id: crib_stream_watchdog
+  mode: single
 - id: camera_wall_kiosk_watchdog
   alias: Camera Wall Kiosk Watchdog
   description: >
