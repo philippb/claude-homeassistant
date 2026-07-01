@@ -786,3 +786,29 @@
           Restarted Frigate at {{ now().strftime('%Y-%m-%d %H:%M') }} —
           crib camera FPS was 0 for 10+ minutes.
   mode: single
+- id: camera_wall_kiosk_watchdog
+  alias: Camera Wall Kiosk Watchdog
+  description: >
+    While Camera Wall kiosk mode is on, keep the camera-wall app in the
+    foreground on the hallway CanvasTV. The app's MainActivity is singleTop, so
+    relaunching it when it is already foreground is a harmless no-op (onNewIntent,
+    no re-render); if the app died (native H.264 decoder crash) this revives it
+    within a minute. Gated by input_boolean.camera_wall_kiosk so it never fights
+    Art Mode or the doorbell-to-TV casts, which run while kiosk mode is off.
+  triggers:
+    - trigger: time_pattern
+      minutes: /1
+    - trigger: state
+      entity_id: input_boolean.camera_wall_kiosk
+      to: 'on'
+  conditions:
+    - condition: state
+      entity_id: input_boolean.camera_wall_kiosk
+      state: 'on'
+  actions:
+    - action: androidtv.adb_command
+      target:
+        entity_id: media_player.android_tv_192_168_14_205
+      data:
+        command: am start -n com.camerawall.tv/.MainActivity
+  mode: single

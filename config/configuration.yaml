@@ -422,6 +422,11 @@ input_text:
     icon: mdi:video-box
     max: 255
 
+input_boolean:
+  camera_wall_kiosk:
+    name: "Camera Wall Kiosk Mode"
+    icon: mdi:cctv
+
 logger:
   default: warning
   logs:
