@@ -14,6 +14,12 @@ BACKUP_DIR ?= backups
 VENV_PATH ?= venv
 TOOLS_PATH ?= tools
 
+# Sync guard: refuses a pull/push that would silently overwrite work (see tools/sync_guard.py).
+# FORCE=1 skips the check, e.g. `make push FORCE=1`.
+SYNC_BASELINE ?= .sync-baseline
+SYNC_GUARD = python3 $(TOOLS_PATH)/sync_guard.py
+SYNC_GUARD_ARGS = --remote $(HA_HOST):$(HA_REMOTE_PATH) --local $(LOCAL_CONFIG_PATH) --baseline $(SYNC_BASELINE)
+
 # Colors for output
 GREEN = \033[0;32m
 YELLOW = \033[1;33m
@@ -43,7 +49,11 @@ help:
 # Pull configuration from Home Assistant
 pull: check-env
 	@echo "$(GREEN)Pulling configuration from Home Assistant...$(NC)"
+ifndef FORCE
+	@$(SYNC_GUARD) check-pull $(SYNC_GUARD_ARGS) --excludes .rsync-excludes-pull
+endif
 	@rsync -avz --delete --exclude-from=.rsync-excludes-pull $(HA_HOST):$(HA_REMOTE_PATH) $(LOCAL_CONFIG_PATH)
+	@$(SYNC_GUARD) record $(SYNC_GUARD_ARGS) --excludes .rsync-excludes-pull
 	@echo "$(GREEN)Configuration pulled successfully!$(NC)"
 	@echo "$(YELLOW)Running validation to ensure integrity...$(NC)"
 	@$(MAKE) validate
@@ -53,7 +63,11 @@ push: check-env
 	@echo "$(GREEN)Validating configuration before push...$(NC)"
 	@$(MAKE) validate
 	@echo "$(GREEN)Validation passed! Pushing to Home Assistant...$(NC)"
+ifndef FORCE
+	@$(SYNC_GUARD) check-push $(SYNC_GUARD_ARGS) --excludes .rsync-excludes-push
+endif
 	@rsync -avz --delete --exclude-from=.rsync-excludes-push $(LOCAL_CONFIG_PATH) $(HA_HOST):$(HA_REMOTE_PATH)
+	@$(SYNC_GUARD) record $(SYNC_GUARD_ARGS) --excludes .rsync-excludes-pull
 	@echo "$(GREEN)Configuration pushed successfully!$(NC)"
 	@echo "$(GREEN)Reloading Home Assistant configuration...$(NC)"
 	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reload_config.py

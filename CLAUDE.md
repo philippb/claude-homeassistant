@@ -65,6 +65,11 @@ needed, make them manually in the Home Assistant UI:
 1. Validation runs automatically - do not push if validation fails
 2. Only YAML configuration files will be synced (`.storage/` is protected)
 
+### If `make pull` or `make push` refuses (sync guard)
+1. `make push` refusing means files changed on Home Assistant since the last pull (usually edited in the UI). Run `make pull` to get them, re-apply your edit on top, then push.
+2. `make pull` refusing means local edits were never pushed. Push them first, or ask the user before discarding them.
+3. Never add `FORCE=1` on your own: it overwrites someone's work. Use it only when the user explicitly asks.
+
 ### After `make push`
 1. Reload the relevant HA components (automations, scenes, scripts)
 2. Verify changes took effect in HA

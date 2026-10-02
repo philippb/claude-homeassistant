@@ -9,6 +9,9 @@ config/ip_bans.yaml
 config/.uuid
 config/.HA_VERSION
 
+# Last synced config, used by tools/sync_guard.py
+.sync-baseline/
+
 # Python
 venv/
 venv

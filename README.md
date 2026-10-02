@@ -10,6 +10,7 @@ Click to play
 - **🤖 AI-Powered Automation Creation**: Use Claude Code to write automations in plain English
 - **🛡️ Multi-Layer Validation**: Comprehensive validation prevents broken configurations
 - **🔄 Safe Deployments**: Pre-push validation blocks invalid configs from reaching HA
+- **🛡️ No Silent Overwrites**: `make push` refuses to overwrite changes made in the HA UI since the last pull, and `make pull` refuses to overwrite local edits that were never pushed
 - **🔍 Entity Discovery**: Advanced tools to explore and search available entities
 - **⚡ Automated Hooks**: Validation runs automatically on file changes
 - **📊 Entity Registry Integration**: Real-time validation against your actual HA setup
@@ -202,6 +203,7 @@ make push  # Uploads changes back to your HA instance (with validation)
 2. **Real Data**: First `make pull` overwrites templates with your actual HA setup
 3. **Local Development**: Edit real configs locally with validation safety
 4. **Safe Deployment**: `make push` validates before uploading to prevent broken configs
+5. **No Silent Overwrites**: both directions use `rsync --delete`, so the destination becomes an exact copy. The HA UI rewrites `automations.yaml`, `scripts.yaml` and `scenes.yaml` on every save, so pushing after a UI edit would undo it. `tools/sync_guard.py` keeps a copy of the last synced state (`.sync-baseline/`) and stops a push if HA changed since then, or a pull if you have unpushed local edits, listing the files. Pull (or push) first; `make push FORCE=1` / `make pull FORCE=1` overwrites on purpose.
 
 This gives you a complete development environment while only modifying your HA instance when completed.
 
@@ -253,6 +255,8 @@ xcode-select --install  # Installs Command Line Tools including make
 ```bash
 make pull      # Pull latest config from Home Assistant
 make push      # Push local config to HA (with validation)
+make push FORCE=1  # Push even if HA changed since the last pull (overwrites those changes)
+make pull FORCE=1  # Pull even if local edits were never pushed (discards them)
 make backup    # Create timestamped backup
 make validate  # Run all validation tests
 ```

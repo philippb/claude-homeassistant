@@ -8,7 +8,7 @@ on:
 
 jobs:
   rsync-excludes-tests:
-    name: Rsync Exclude Integration Tests
+    name: Rsync Exclude and Sync Guard Integration Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -27,7 +27,7 @@ jobs:
         run: pip install pytest pytest-cov
 
       - name: Run rsync exclude tests
-        run: python -m pytest tests/test_rsync_excludes.py -o addopts=
+        run: python -m pytest tests/test_rsync_excludes.py tests/test_sync_guard.py -o addopts=
 
   reference-validator-tests:
     name: Reference Validator Tests
