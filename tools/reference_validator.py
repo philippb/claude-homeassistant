@@ -101,6 +101,10 @@ class ReferenceValidator:
         "zone.home",
     }
 
+    # Integrations whose include/exclude filters may list entities that no longer
+    # exist. Filtering a missing entity is harmless: warn, don't fail.
+    FILTER_INTEGRATIONS = ("recorder", "logbook", "history")
+
     # No domain-wide skips - we validate all entity references
     # persistent_notification uses notification_id with services/triggers,
     # not entity IDs. See: home-assistant.io/integrations/persistent_notification/
@@ -355,6 +359,15 @@ class ReferenceValidator:
                                             name, str
                                         ) and self._is_valid_object_id(name):
                                             entities.add(f"{sensor_type}.{name}")
+                                # Other platforms (rest, command_line, ping, ...):
+                                # without unique_id they are not in the entity
+                                # registry; their entity_id comes from `name`.
+                                elif "platform" in item and isinstance(
+                                    item.get("name"), str
+                                ):
+                                    object_id = self._slugify_object_id(item["name"])
+                                    if self._is_valid_object_id(object_id):
+                                        entities.add(f"{sensor_type}.{object_id}")
 
         except Exception:
             pass  # Ignore errors
@@ -727,6 +740,15 @@ class ReferenceValidator:
         if data is None:
             return True  # Empty file is valid
 
+        # Entities only listed in recorder/logbook/history filters are checked
+        # separately below (warnings), the rest of the file as usual.
+        filter_refs: Set[str] = set()
+        if isinstance(data, dict):
+            for key in self.FILTER_INTEGRATIONS:
+                if key in data:
+                    filter_refs |= self.extract_entity_references(data[key])
+            data = {k: v for k, v in data.items() if k not in self.FILTER_INTEGRATIONS}
+
         # Extract references
         entity_refs = self.extract_entity_references(data)
         device_refs = self.extract_device_references(data)
@@ -776,6 +798,18 @@ class ReferenceValidator:
 
             self.errors.append(f"{file_path}: Unknown entity '{entity_id}'")
             all_valid = False
+
+        for entity_id in sorted(filter_refs - entity_refs):
+            if (
+                entity_id not in entities
+                and entity_id not in config_entities
+                and not self.is_builtin_domain(entity_id)
+                and not self.is_uuid_format(entity_id)
+            ):
+                self.warnings.append(
+                    f"{file_path}: Recorder/logbook/history filter lists unknown "
+                    f"entity '{entity_id}' (harmless; remove it to tidy up)"
+                )
 
         # Validate entity registry ID references (UUID format)
         for registry_id in entity_registry_ids:

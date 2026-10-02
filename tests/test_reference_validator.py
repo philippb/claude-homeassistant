@@ -528,3 +528,99 @@ class TestBuiltinEntities:
         validator = ReferenceValidator(str(temp_config_dir))
 
         assert len(validator.BUILTIN_DOMAINS) == 0
+
+
+class TestPlatformSensorNames:
+    """Platform sensors without unique_id are named after `name`, not in the registry."""
+
+    def test_rest_sensor_name_is_a_known_entity(self, temp_config_dir):
+        """A named REST sensor under `sensor:` defines sensor.<slug of name>."""
+        (temp_config_dir / "configuration.yaml").write_text(
+            yaml.dump(
+                {
+                    "sensor": [
+                        {
+                            "platform": "rest",
+                            "name": "Spot Price",
+                            "resource": "http://example.invalid",
+                        }
+                    ]
+                }
+            )
+        )
+        (temp_config_dir / "templates.yaml").write_text(
+            yaml.dump(
+                [
+                    {
+                        "sensor": [
+                            {
+                                "name": "price cents",
+                                "state": "{{ states('sensor.spot_price') }}",
+                            }
+                        ]
+                    }
+                ]
+            )
+        )
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        assert "sensor.spot_price" in validator.get_config_defined_entities()
+        validator.validate_file_references(temp_config_dir / "templates.yaml")
+        assert not any("sensor.spot_price" in e for e in validator.errors)
+
+    def test_platform_binary_sensor_name_is_a_known_entity(self, temp_config_dir):
+        (temp_config_dir / "configuration.yaml").write_text(
+            yaml.dump({"binary_sensor": [{"platform": "ping", "name": "NAS Online"}]})
+        )
+        validator = ReferenceValidator(str(temp_config_dir))
+        assert "binary_sensor.nas_online" in validator.get_config_defined_entities()
+
+
+class TestRecorderFilterEntities:
+    """Recorder/logbook/history filters may list entities that no longer exist.
+
+    Excluding a missing entity is harmless, so it should be a warning, not an error.
+    """
+
+    def test_stale_recorder_exclude_is_a_warning(self, temp_config_dir):
+        config = {
+            "recorder": {"exclude": {"entities": ["weather.dark_sky"]}},
+            "logbook": {"exclude": {"entities": ["sensor.gone"]}},
+        }
+        (temp_config_dir / "configuration.yaml").write_text(yaml.dump(config))
+
+        validator = ReferenceValidator(str(temp_config_dir))
+        assert validator.validate_file_references(
+            temp_config_dir / "configuration.yaml"
+        )
+        assert validator.errors == []
+        warnings = " ".join(validator.warnings)
+        assert "weather.dark_sky" in warnings
+        assert "sensor.gone" in warnings
+
+    def test_known_recorder_entity_gives_no_warning(self, temp_config_dir):
+        config = {"recorder": {"exclude": {"entities": ["sensor.temperature"]}}}
+        (temp_config_dir / "configuration.yaml").write_text(yaml.dump(config))
+        validator = ReferenceValidator(str(temp_config_dir))
+        assert validator.validate_file_references(
+            temp_config_dir / "configuration.yaml"
+        )
+        assert not any("sensor.temperature" in w for w in validator.warnings)
+
+    def test_unknown_entity_elsewhere_is_still_an_error(self, temp_config_dir):
+        """Only the filter lists are relaxed, not other references in the same file."""
+        config = {
+            "recorder": {"exclude": {"entities": ["sensor.gone"]}},
+            "automation": [
+                {
+                    "trigger": {"platform": "state", "entity_id": "sensor.gone"},
+                    "action": [],
+                }
+            ],
+        }
+        (temp_config_dir / "configuration.yaml").write_text(yaml.dump(config))
+        validator = ReferenceValidator(str(temp_config_dir))
+        assert not validator.validate_file_references(
+            temp_config_dir / "configuration.yaml"
+        )
+        assert any("sensor.gone" in e for e in validator.errors)
