@@ -14,7 +14,7 @@ This repository manages Home Assistant configuration files with automated valida
 - `temp/` - Temporary directory for Claude to write and test code before moving to final locations
 - `Makefile` - Commands for pulling/pushing configuration
 - `.claude-code/` - Project-specific Claude Code settings and hooks
-  - `hooks/` - Validation hooks that run automatically
+  - `hooks/` - Validation hooks that run automatically (registered in `.claude/settings.json`)
   - `settings.json` - Project configuration
 
 ## Rsync Architecture

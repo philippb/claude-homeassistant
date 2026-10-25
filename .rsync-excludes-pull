@@ -10,10 +10,9 @@ home-assistant_v2.db*
 *.log*
 
 # Sensitive .storage files (never pull)
-.storage/auth/
-.storage/auth/**
-.storage/auth_cache/
-.storage/auth_cache/**
+# No trailing slash: .storage/auth is a file on real HA installs
+.storage/auth
+.storage/auth_cache
 .storage/auth_provider.homeassistant
 .storage/http.auth
 .storage/esphome.encryption_keys
@@ -38,8 +37,16 @@ image/
 tmp_backups/
 www/
 
+# Add-on runtime data (Zigbee2MQTT database, network keys, logs)
+zigbee2mqtt/
+
+# Repo-only template (not present on HA)
+secrets.yaml.example
+
 # Miscellaneous
 .uuid
+.cache/
+.DS_Store
 
 # Temporary files
 *.tmp

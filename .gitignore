@@ -144,3 +144,8 @@ coverage.xml
 
 # Virtual Environment symlink (points to ../venv)
 # Note: Both venv/ and venv symlink are ignored above
+
+# Personal HA runtime data synced by make pull
+config/zigbee2mqtt/
+config/www/
+config/.ha_run.lock

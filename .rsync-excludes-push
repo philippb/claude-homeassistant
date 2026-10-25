@@ -20,12 +20,22 @@ deps/
 tts/
 .uuid
 __pycache__/
+.cache/
+.HA_VERSION
+.ha_run.lock
+.DS_Store
+
+# Add-on runtime data (Zigbee2MQTT database, network keys, logs)
+zigbee2mqtt/
 
 # Large directories not needed for config management
 backups/
 image/
 tmp_backups/
 www/
+
+# Repo-only template (not present on HA)
+secrets.yaml.example
 
 # Temporary files
 *.tmp

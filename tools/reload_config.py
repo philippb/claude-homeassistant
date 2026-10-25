@@ -42,20 +42,30 @@ def reload_config():
     # Prepare API request
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-    url = f"{ha_url}/api/services/homeassistant/reload_core_config"
+    # reload_core_config does not reload automations, scripts or scenes
+    services = [
+        "homeassistant/reload_core_config",
+        "automation/reload",
+        "script/reload",
+        "scene/reload",
+    ]
 
     try:
-        print("🔄 Reloading Home Assistant core configuration...")
-        response = requests.post(url, headers=headers, timeout=30)
+        print("🔄 Reloading Home Assistant configuration...")
+        for service in services:
+            url = f"{ha_url}/api/services/{service}"
+            response = requests.post(url, headers=headers, timeout=30)
 
-        if response.status_code == 200:
-            print("✅ Configuration reloaded successfully!")
-            return True
-        else:
-            print(f"❌ Failed to reload configuration: {response.status_code}")
-            if response.text:
-                print(f"   Response: {response.text}")
-            return False
+            if response.status_code != 200:
+                print(f"❌ Failed to call {service}: {response.status_code}")
+                if response.text:
+                    print(f"   Response: {response.text}")
+                return False
+
+            print(f"   ✓ {service}")
+
+        print("✅ Configuration reloaded successfully!")
+        return True
 
     except requests.exceptions.Timeout:
         print("❌ Timeout: Home Assistant took too long to respond")
